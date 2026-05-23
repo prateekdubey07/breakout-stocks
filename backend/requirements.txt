@@ -2,9 +2,10 @@ fastapi==0.111.0
 uvicorn[standard]==0.29.0
 yfinance==0.2.40
 pandas==2.2.2
-# pandas-ta==0.3.14b0 is unavailable on PyPI for Python 3.11;
-# using pandas-ta-classic==0.3.14b1 (API-compatible drop-in, same 0.3.x lineage)
-# installed with --no-deps to keep numpy==1.26.4 pinned
+# pandas-ta has no PyPI release for Python 3.11 (pre-releases require >=3.12).
+# Using pandas-ta-classic==0.3.14b1 (API-compatible fork, same 0.3.x lineage).
+# A compatibility shim at backend/pandas_ta.py re-exports it as `pandas_ta`
+# so that `import pandas_ta as ta` works throughout the codebase.
 pandas-ta-classic==0.3.14b1
 xgboost==2.0.3
 scikit-learn==1.4.2
