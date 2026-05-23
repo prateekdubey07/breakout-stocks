@@ -15,7 +15,7 @@ class SignalSummary(BaseModel):
 class Fundamentals(BaseModel):
     eps_growth_yoy: str
     revenue_growth_yoy: str
-    peg_ratio: Optional[float]
+    peg_ratio: Optional[float] = None
     catalyst: str
 
 class BpsResult(BaseModel):
