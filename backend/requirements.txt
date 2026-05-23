@@ -1,0 +1,17 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+yfinance==0.2.40
+pandas==2.2.2
+# pandas-ta==0.3.14b0 is unavailable on PyPI for Python 3.11;
+# using pandas-ta-classic==0.3.14b1 (API-compatible drop-in, same 0.3.x lineage)
+# installed with --no-deps to keep numpy==1.26.4 pinned
+pandas-ta-classic==0.3.14b1
+xgboost==2.0.3
+scikit-learn==1.4.2
+aiohttp==3.9.5
+apscheduler==3.10.4
+python-multipart==0.0.9
+websockets==12.0
+requests==2.32.2
+joblib==1.4.2
+numpy==1.26.4
