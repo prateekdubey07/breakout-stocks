@@ -1,8 +1,18 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from database import init_db
 
-app = FastAPI(title="BreakoutStocks API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="BreakoutStocks API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -11,9 +21,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup():
-    init_db()
 
 @app.get("/health")
 def health():
