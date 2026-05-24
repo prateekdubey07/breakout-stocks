@@ -18,9 +18,18 @@ def fetch_ohlcv(ticker: str, period: str = "6mo") -> pd.DataFrame:
     return df[existing].dropna()
 
 
+_EMPTY_FUNDAMENTALS = {
+    "eps_growth_yoy": None, "revenue_growth_yoy": None, "peg_ratio": None,
+    "market_cap": None, "avg_volume": 1_000_000, "short_pct_float": 0.0,
+    "forward_pe": None, "sector": "Unknown", "next_earnings": None,
+}
+
 def fetch_fundamentals(ticker: str) -> dict:
     """Returns key fundamental fields from yfinance info."""
-    info = yf.Ticker(ticker).info
+    try:
+        info = yf.Ticker(ticker).info
+    except Exception:
+        return dict(_EMPTY_FUNDAMENTALS)
     return {
         "eps_growth_yoy": _safe(info, "earningsGrowth"),
         "revenue_growth_yoy": _safe(info, "revenueGrowth"),
