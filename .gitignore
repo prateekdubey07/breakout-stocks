@@ -4,3 +4,8 @@ __pycache__/
 *.db
 *.pkl
 .env
+*.log
+.claude-flow/
+.claude/
+.superpowers/
+.swarm/
