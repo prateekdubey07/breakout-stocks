@@ -16,3 +16,4 @@ requests==2.32.2
 joblib==1.4.2
 numpy==1.26.4
 python-dotenv==1.0.1
+alpaca-py==0.38.0
