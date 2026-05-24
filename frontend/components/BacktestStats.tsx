@@ -34,19 +34,24 @@ export default function BacktestStats({ summary }: { summary: BacktestSummary })
         <div className="bg-[#111827] border border-[#1e293b] rounded">
           <div className="px-4 py-2 border-b border-[#1e293b] text-[10px] text-[#64748b] uppercase tracking-wide">Signal Log</div>
           <div className="max-h-60 overflow-y-auto">
-            {s.signals.map((sig, i) => (
-              <div key={i} className="grid grid-cols-[80px_80px_80px_80px_1fr] px-4 py-2 border-b border-[#0f1623] text-[10px]">
-                <span className="text-[#64748b]">{sig.date}</span>
-                <span className="text-[#94a3b8]">${sig.entry_price?.toFixed(2)}</span>
-                <span className={sig.outcome === 'WIN' ? 'text-[#22c55e]' : sig.outcome === 'STOP' ? 'text-[#ef4444]' : 'text-[#f59e0b]'}>
-                  {sig.outcome}
-                </span>
-                <span className={sig.pnl_pct >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}>
-                  {(sig.pnl_pct * 100).toFixed(1)}%
-                </span>
-                <span className="text-[#4b5563]">{sig.pattern}</span>
-              </div>
-            ))}
+            {s.signals.map((sig, i) => {
+              const isWin = sig.outcome === 'HIT_T1' || sig.outcome === 'HIT_T2'
+              const isStop = sig.outcome === 'STOPPED_OUT'
+              const ret = sig.actual_return_pct ?? 0
+              return (
+                <div key={i} className="grid grid-cols-[90px_80px_110px_70px_1fr] px-4 py-2 border-b border-[#0f1623] text-[10px]">
+                  <span className="text-[#64748b]">{sig.signal_date}</span>
+                  <span className="text-[#94a3b8]">${sig.entry_price?.toFixed(2)}</span>
+                  <span className={isWin ? 'text-[#22c55e]' : isStop ? 'text-[#ef4444]' : 'text-[#f59e0b]'}>
+                    {sig.outcome}
+                  </span>
+                  <span className={ret >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}>
+                    {ret.toFixed(1)}%
+                  </span>
+                  <span className="text-[#4b5563]">{sig.signal_type}</span>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
