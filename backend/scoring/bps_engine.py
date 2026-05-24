@@ -1,9 +1,14 @@
+import math
 from data.fetcher import fetch_ohlcv, fetch_fundamentals
 from scoring.technical import compute_technical_score
 from scoring.fundamental import compute_fundamental_score
 from scoring.risk_filters import apply_risk_filters
 from ml.predictor import predict_breakout_prob
 from models import BpsResult, SignalSummary, Fundamentals
+
+
+def _safe_float(v: float, default: float = 0.0) -> float:
+    return default if (math.isnan(v) or math.isinf(v)) else v
 
 
 def _conviction(bps: float) -> str:
@@ -25,7 +30,7 @@ def _entry_stop_targets(price: float, atr: float) -> tuple[str, str, str, str, s
     risk = price - stop
     reward = t1 - price
     rr = f"{round(reward/risk, 1)}:1" if risk > 0 else "N/A"
-    return f"${entry_lo}–${entry_hi}", f"${stop}", f"${t1}", f"${t2}", rr
+    return f"${entry_lo}-${entry_hi}", f"${stop}", f"${t1}", f"${t2}", rr
 
 
 def score_ticker(ticker: str) -> BpsResult:
@@ -58,13 +63,13 @@ def score_ticker(ticker: str) -> BpsResult:
         signal_summary=SignalSummary(
             pattern=f"ML prob {ml_prob:.0%}",
             volume_surge=tech.volume_surge,
-            volume_ratio=tech.volume_ratio,
+            volume_ratio=round(_safe_float(tech.volume_ratio), 2),
             above_key_mas=tech.above_key_mas,
-            rsi_14=tech.rsi_14,
+            rsi_14=round(_safe_float(tech.rsi_14), 1),
             macd_signal=tech.macd_signal,
             volatility_contracting=tech.volatility_contracting,
-            pct_from_52w_high=tech.pct_from_52w_high,
-            ml_breakout_prob=ml_prob,
+            pct_from_52w_high=round(_safe_float(tech.pct_from_52w_high), 2),
+            ml_breakout_prob=round(_safe_float(ml_prob), 4),
         ),
         fundamentals=Fundamentals(
             eps_growth_yoy=fund.eps_growth_yoy,
@@ -78,7 +83,7 @@ def score_ticker(ticker: str) -> BpsResult:
         target_1=t1,
         target_2=t2,
         risk_reward=rr,
-        timeframe="5–10 trading sessions",
+        timeframe="5-10 trading sessions",
     )
 
 

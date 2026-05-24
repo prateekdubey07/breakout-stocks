@@ -11,7 +11,7 @@ const DEFAULT_TICKERS = 'AAPL,MSFT,NVDA,TSLA,META,AMZN,GOOGL,AMD,PLTR,COIN,SMCI,
 
 export default function ScannerPage() {
   const [input, setInput] = useState(DEFAULT_TICKERS)
-  const [minBps, setMinBps] = useState(50)
+  const [minBps, setMinBps] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const { results, loading, error, scan } = useScan()
   const { alerts, connected } = useWebSocket()

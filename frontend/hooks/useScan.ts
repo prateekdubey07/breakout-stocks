@@ -13,7 +13,7 @@ export function useScan() {
     setError(null)
     try {
       const data = await scanTickers(tickers, minBps)
-      setResults(data)
+      setResults(Array.isArray(data) ? data : (data.candidates ?? []))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Scan failed')
     } finally {
