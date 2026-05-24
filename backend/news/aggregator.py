@@ -1,6 +1,6 @@
 import os
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
@@ -30,7 +30,7 @@ def fetch_news(tickers: list[str]) -> list[dict]:
                 r = requests.get(
                     "https://newsapi.org/v2/everything",
                     params={"q": ticker, "sortBy": "publishedAt", "pageSize": 5,
-                            "from": since, "apiKey": NEWSAPI_KEY},
+                            "from": since, "language": "en", "apiKey": NEWSAPI_KEY},
                     timeout=5,
                 )
                 for art in r.json().get("articles", []):
@@ -59,12 +59,17 @@ def fetch_news(tickers: list[str]) -> list[dict]:
                     h = art.get("headline", "")
                     if h and h not in seen:
                         seen.add(h)
+                        ts = art.get("datetime", 0)
+                        try:
+                            pub = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+                        except Exception:
+                            pub = ""
                         results.append({
                             "ticker": ticker, "headline": h,
                             "source": art.get("source", "Finnhub"),
                             "url": art.get("url", ""),
                             "sentiment": _sentiment(h),
-                            "published_at": str(art.get("datetime", "")),
+                            "published_at": pub,
                         })
             except Exception:
                 pass
