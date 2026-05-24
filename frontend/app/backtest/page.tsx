@@ -1,17 +1,21 @@
 'use client'
-import { useState } from 'react'
-import { runBacktest } from '@/lib/api'
+import { useState, useEffect } from 'react'
+import { runBacktest, getDefaultTickers } from '@/lib/api'
 import BacktestStats from '@/components/BacktestStats'
+import TickerCombobox from '@/components/TickerCombobox'
 import type { BacktestSummary } from '@/lib/types'
 
 export default function BacktestPage() {
   const [ticker, setTicker] = useState('')
+  const [tickers, setTickers] = useState<string[]>([])
   const [start, setStart] = useState('2023-01-01')
   const [end, setEnd] = useState(new Date().toISOString().slice(0, 10))
   const [capital, setCapital] = useState(10000)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<BacktestSummary | null>(null)
+
+  useEffect(() => { getDefaultTickers().then(setTickers).catch(() => {}) }, [])
 
   async function handleRun() {
     if (!ticker) return
@@ -32,12 +36,7 @@ export default function BacktestPage() {
       <div className="px-5 py-3 border-b border-[#1e293b]">
         <div className="text-white font-bold mb-3">Backtest</div>
         <div className="flex items-center gap-3 flex-wrap">
-          <input
-            value={ticker}
-            onChange={e => setTicker(e.target.value)}
-            placeholder="Ticker (e.g. NVDA)"
-            className="bg-[#111827] border border-[#1e293b] rounded px-3 py-1.5 text-[12px] text-[#e2e8f0] placeholder-[#4b5563] focus:outline-none focus:border-[#3b82f6] w-32"
-          />
+          <TickerCombobox value={ticker} onChange={setTicker} tickers={tickers} placeholder="Search ticker..." width="w-36" />
           <input type="date" value={start} onChange={e => setStart(e.target.value)}
             className="bg-[#111827] border border-[#1e293b] rounded px-3 py-1.5 text-[12px] text-[#e2e8f0] focus:outline-none focus:border-[#3b82f6]" />
           <span className="text-[#64748b] text-[11px]">to</span>
