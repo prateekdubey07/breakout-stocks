@@ -28,9 +28,9 @@ export default function NewsPanel({ items }: { items: NewsItem[] }) {
                 {item.headline}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                {item.tickers?.map(t => (
-                  <span key={t} className="text-[9px] bg-[#1e293b] text-[#3b82f6] px-1.5 py-0.5 rounded font-bold">{t}</span>
-                ))}
+                {item.ticker && (
+                  <span className="text-[9px] bg-[#1e293b] text-[#3b82f6] px-1.5 py-0.5 rounded font-bold">{item.ticker}</span>
+                )}
                 <span className="text-[9px] text-[#4b5563]">{item.source}</span>
                 <span className="text-[9px] text-[#4b5563]">{timeAgo(item.published_at)}</span>
               </div>

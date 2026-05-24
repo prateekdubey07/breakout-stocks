@@ -15,19 +15,19 @@ export default function BacktestStats({ summary }: { summary: BacktestSummary })
     <div className="space-y-4">
       <div className="grid grid-cols-4 gap-2">
         <Stat label="Total Signals" value={s.total_signals} />
-        <Stat label="Win Rate" value={`${(s.win_rate * 100).toFixed(1)}%`} color={s.win_rate >= 0.5 ? 'text-[#22c55e]' : 'text-[#ef4444]'} />
-        <Stat label="Stop Rate" value={`${(s.stop_rate * 100).toFixed(1)}%`} color="text-[#ef4444]" />
-        <Stat label="Avg Days Held" value={s.avg_days_held.toFixed(1)} />
+        <Stat label="Win Rate" value={`${(s.win_rate_t1 * 100).toFixed(1)}%`} color={s.win_rate_t1 >= 0.5 ? 'text-[#22c55e]' : 'text-[#ef4444]'} />
+        <Stat label="Stop Rate" value={`${(s.stop_out_rate * 100).toFixed(1)}%`} color="text-[#ef4444]" />
+        <Stat label="Avg Days Held" value={s.avg_days_to_resolution.toFixed(1)} />
       </div>
       <div className="grid grid-cols-4 gap-2">
-        <Stat label="Avg Win" value={`${(s.avg_win_pct * 100).toFixed(1)}%`} color="text-[#22c55e]" />
-        <Stat label="Avg Loss" value={`${(s.avg_loss_pct * 100).toFixed(1)}%`} color="text-[#ef4444]" />
-        <Stat label="Expectancy" value={`${(s.expectancy * 100).toFixed(2)}%`} color={s.expectancy >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'} />
+        <Stat label="Avg Win" value={`${s.avg_return_winners_pct.toFixed(1)}%`} color="text-[#22c55e]" />
+        <Stat label="Avg Loss" value={`${s.avg_return_losers_pct.toFixed(1)}%`} color="text-[#ef4444]" />
+        <Stat label="Expectancy" value={`${s.expectancy_per_trade_pct.toFixed(2)}%`} color={s.expectancy_per_trade_pct >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'} />
         <Stat label="Profit Factor" value={s.profit_factor.toFixed(2)} color={s.profit_factor >= 1.5 ? 'text-[#22c55e]' : 'text-[#f59e0b]'} />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Stat label="Sharpe Ratio" value={s.sharpe_ratio.toFixed(2)} color={s.sharpe_ratio >= 1 ? 'text-[#22c55e]' : 'text-[#f59e0b]'} />
-        <Stat label="Max Drawdown" value={`${(s.max_drawdown * 100).toFixed(1)}%`} color="text-[#ef4444]" />
+        <Stat label="Max Drawdown" value={`${s.max_drawdown_pct.toFixed(1)}%`} color="text-[#ef4444]" />
       </div>
 
       {s.signals && s.signals.length > 0 && (
