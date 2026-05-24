@@ -1,6 +1,6 @@
 'use client'
-import { useState } from 'react'
-import { getNews } from '@/lib/api'
+import { useState, useEffect } from 'react'
+import { getNews, getDefaultTickers } from '@/lib/api'
 import NewsPanel from '@/components/NewsPanel'
 import type { NewsItem } from '@/lib/types'
 
@@ -11,6 +11,10 @@ export default function NewsPage() {
   const [items, setItems] = useState<NewsItem[]>([])
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<typeof SENTIMENT_FILTER[number]>('all')
+
+  useEffect(() => {
+    getDefaultTickers().then(t => setTickers(t.join(','))).catch(() => {})
+  }, [])
 
   async function handleLoad() {
     setLoading(true)
@@ -51,21 +55,20 @@ export default function NewsPage() {
         </div>
 
         {items.length > 0 && (
-          <div className="flex gap-2 mt-2">
-            {SENTIMENT_FILTER.map(s => (
+          <div className="mt-3 flex gap-3 flex-wrap">
+            {[
+              { label: 'Total Articles', value: items.length, color: 'text-white', bg: 'bg-[#111827]', border: 'border-[#1e293b]', key: 'all' },
+              { label: 'Bullish', value: counts.bullish, color: 'text-[#22c55e]', bg: 'bg-[#0d1f12]', border: 'border-[#22c55e]/30', key: 'bullish' },
+              { label: 'Bearish', value: counts.bearish, color: 'text-[#ef4444]', bg: 'bg-[#1f0d0d]', border: 'border-[#ef4444]/30', key: 'bearish' },
+              { label: 'Neutral', value: counts.neutral, color: 'text-[#94a3b8]', bg: 'bg-[#111827]', border: 'border-[#334155]', key: 'neutral' },
+            ].map(card => (
               <button
-                key={s}
-                onClick={() => setFilter(s)}
-                className={`text-[10px] px-2 py-0.5 rounded font-semibold transition-colors ${
-                  filter === s
-                    ? s === 'bullish' ? 'bg-[#22c55e] text-black'
-                    : s === 'bearish' ? 'bg-[#ef4444] text-black'
-                    : s === 'neutral' ? 'bg-[#64748b] text-white'
-                    : 'bg-[#3b82f6] text-black'
-                    : 'bg-[#1e293b] text-[#94a3b8] hover:bg-[#334155]'
-                }`}
+                key={card.key}
+                onClick={() => setFilter(card.key as typeof SENTIMENT_FILTER[number])}
+                className={`${card.bg} border ${card.border} rounded px-4 py-2.5 text-left transition-all ${filter === card.key ? 'ring-1 ring-white/20' : 'opacity-80 hover:opacity-100'}`}
               >
-                {s === 'all' ? `All (${items.length})` : `${s} (${counts[s as keyof typeof counts]})`}
+                <div className="text-[9px] text-[#64748b] uppercase tracking-wide mb-0.5">{card.label}</div>
+                <div className={`text-2xl font-black ${card.color}`}>{card.value}</div>
               </button>
             ))}
           </div>

@@ -52,6 +52,10 @@ def init_db():
             published_at TEXT,
             fetched_at TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS default_tickers (
+            ticker TEXT PRIMARY KEY,
+            added_at TEXT DEFAULT (datetime('now'))
+        );
         CREATE TABLE IF NOT EXISTS fundamentals_cache (
             ticker TEXT PRIMARY KEY,
             data_json TEXT NOT NULL,
@@ -75,4 +79,22 @@ def init_db():
         );
     """)
     conn.commit()
+
+    # Seed default tickers if table is empty
+    DEFAULT_TICKERS = [
+        "NVDA","AAPL","MSFT","AMZN","GOOGL","GOOG","AVGO","META","TSLA","BRK.B",
+        "WMT","LLY","JPM","XOM","JNJ","V","COST","MA","ORCL","MU","NFLX","CVX",
+        "ABBV","BAC","PLTR","AMD","CAT","PG","HD","KO","CSCO","GE","MRK","AMAT",
+        "LRCX","MS","RTX","GS","UNH","WFC","PM","INTC","GEV","LIN","IBM","TMUS",
+        "MCD","PEP","VZ","AXP","C","KLAC","T","NEE","AMGN","TMO","ABT","TJX",
+        "TXN","GILD","CRM","DIS","ISRG","BA","PFE","SCHW","APH","COP","ANET",
+        "ADI","DE","BLK","UBER","HON","UNP","LMT","ETN","WELL","QCOM","DHR",
+        "BKNG","LOW","APP","PANW","CB","SPGI","BMY","SYK","PLD","NEM","GLW",
+        "ACN","INTU","PH","COF","VRTX","PGR","MDT","MO","DELL",
+    ]
+    existing = conn.execute("SELECT COUNT(*) FROM default_tickers").fetchone()[0]
+    if existing == 0:
+        conn.executemany("INSERT OR IGNORE INTO default_tickers (ticker) VALUES (?)",
+                         [(t,) for t in DEFAULT_TICKERS])
+        conn.commit()
     conn.close()

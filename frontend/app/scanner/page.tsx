@@ -7,10 +7,8 @@ import BpsTable from '@/components/BpsTable'
 import TickerDetail from '@/components/TickerDetail'
 import AlertBanner from '@/components/AlertBanner'
 
-const DEFAULT_TICKERS = 'AAPL,MSFT,NVDA,TSLA,META,AMZN,GOOGL,AMD,PLTR,COIN,SMCI,MARA,CRWD,PANW,ZS,DDOG,NET,SNOW,UBER,LYFT'
-
 export default function ScannerPage() {
-  const [input, setInput] = useState(DEFAULT_TICKERS)
+  const [input, setInput] = useState('')
   const [minBps, setMinBps] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const { results, loading, error, scan } = useScan()
@@ -38,12 +36,21 @@ export default function ScannerPage() {
     ]
   }, [results, connected])
 
+  useEffect(() => {
+    fetch('http://localhost:8000/api/default-tickers')
+      .then(r => r.json())
+      .then((tickers: string[]) => {
+        const joined = tickers.join(',')
+        setInput(joined)
+        scan(tickers, minBps)
+      })
+      .catch(() => {})
+  }, [])
+
   function handleScan() {
     const tickers = input.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
     scan(tickers, minBps)
   }
-
-  useEffect(() => { handleScan() }, [])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

@@ -1,24 +1,15 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { getDefaultTickers } from '@/lib/api'
 
 const BASE = 'http://localhost:8000'
 
 interface Trade {
-  id: number
-  ticker: string
-  entry_price: number
-  shares: number
-  stop_loss: number | null
-  target_1: number | null
-  entry_date: string
-  exit_price: number | null
-  exit_date: string | null
-  status: 'OPEN' | 'CLOSED'
-  pnl_usd: number | null
-  pnl_pct: number | null
-  live_price: number | null
-  unrealized_pnl_usd: number | null
-  unrealized_pnl_pct: number | null
+  id: number; ticker: string; entry_price: number; shares: number
+  stop_loss: number | null; target_1: number | null
+  entry_date: string; exit_price: number | null; exit_date: string | null
+  status: 'OPEN' | 'CLOSED'; pnl_usd: number | null; pnl_pct: number | null
+  live_price: number | null; unrealized_pnl_usd: number | null; unrealized_pnl_pct: number | null
   notes: string
 }
 
@@ -26,35 +17,90 @@ function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
 }
 
+// Searchable ticker combobox
+function TickerCombobox({ value, onChange, tickers }: { value: string; onChange: (v: string) => void; tickers: string[] }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState(value)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setQuery(value) }, [value])
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filtered = tickers.filter(t => t.includes(query.toUpperCase())).slice(0, 12)
+
+  return (
+    <div ref={ref} className="relative w-32">
+      <input
+        value={query}
+        onChange={e => { setQuery(e.target.value.toUpperCase()); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        placeholder="Search ticker..."
+        className="w-full bg-[#111827] border border-[#1e293b] rounded px-2 py-1.5 text-[12px] text-[#e2e8f0] placeholder-[#4b5563] focus:outline-none focus:border-[#3b82f6]"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute top-full left-0 z-50 w-full bg-[#111827] border border-[#1e293b] rounded mt-0.5 max-h-48 overflow-y-auto shadow-xl">
+          {filtered.map(t => (
+            <div key={t} onMouseDown={() => { onChange(t); setQuery(t); setOpen(false) }}
+              className={`px-3 py-1.5 text-[11px] cursor-pointer hover:bg-[#1e293b] ${t === value ? 'text-[#3b82f6]' : 'text-[#e2e8f0]'}`}>
+              {t}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function PaperPage() {
   const [trades, setTrades] = useState<Trade[]>([])
-  const [form, setForm] = useState({ ticker: '', entry_price: '', shares: '', stop_loss: '', target_1: '', notes: '' })
+  const [tickers, setTickers] = useState<string[]>([])
+  const [form, setForm] = useState({ ticker: '', amount: '', stop_loss: '', target_1: '', notes: '' })
   const [closeId, setCloseId] = useState<number | null>(null)
   const [closePrice, setClosePrice] = useState('')
   const [loading, setLoading] = useState(false)
 
   const load = () => fetch(`${BASE}/api/paper-trades`).then(r => r.json()).then(setTrades).catch(() => {})
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    getDefaultTickers().then(setTickers).catch(() => {})
+  }, [])
 
   async function handleOpen() {
-    if (!form.ticker || !form.entry_price || !form.shares) return
+    if (!form.ticker || !form.amount) return
+    const amount = parseFloat(form.amount)
+    if (isNaN(amount) || amount <= 0) return
+
+    // Fetch live price to calculate shares
     setLoading(true)
-    await fetch(`${BASE}/api/paper-trades`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ticker: form.ticker.toUpperCase(),
-        entry_price: parseFloat(form.entry_price),
-        shares: parseFloat(form.shares),
-        stop_loss: form.stop_loss ? parseFloat(form.stop_loss) : null,
-        target_1: form.target_1 ? parseFloat(form.target_1) : null,
-        notes: form.notes,
-      }),
-    })
-    setForm({ ticker: '', entry_price: '', shares: '', stop_loss: '', target_1: '', notes: '' })
-    await load()
-    setLoading(false)
+    try {
+      const df = await fetch(`${BASE}/api/ohlcv/${form.ticker}?period=5d`).then(r => r.json())
+      const price = df.data?.at(-1)?.close
+      if (!price) throw new Error('no price')
+      const shares = parseFloat((amount / price).toFixed(4))
+      await fetch(`${BASE}/api/paper-trades`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticker: form.ticker,
+          entry_price: price,
+          shares,
+          stop_loss: form.stop_loss ? parseFloat(form.stop_loss) : null,
+          target_1: form.target_1 ? parseFloat(form.target_1) : null,
+          notes: form.notes || `$${amount} @ $${price.toFixed(2)}`,
+        }),
+      })
+      setForm({ ticker: '', amount: '', stop_loss: '', target_1: '', notes: '' })
+      await load()
+    } catch (e) {
+      alert('Failed to get price for ' + form.ticker)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleClose() {
@@ -64,143 +110,128 @@ export default function PaperPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ exit_price: parseFloat(closePrice) }),
     })
-    setCloseId(null)
-    setClosePrice('')
-    load()
+    setCloseId(null); setClosePrice(''); load()
   }
 
-  async function handleDelete(id: number) {
-    await fetch(`${BASE}/api/paper-trades/${id}`, { method: 'DELETE' })
-    load()
-  }
+  const handleDelete = async (id: number) => { await fetch(`${BASE}/api/paper-trades/${id}`, { method: 'DELETE' }); load() }
 
   const open = trades.filter(t => t.status === 'OPEN')
   const closed = trades.filter(t => t.status === 'CLOSED')
   const totalUnrealized = open.reduce((s, t) => s + (t.unrealized_pnl_usd ?? 0), 0)
   const totalRealized = closed.reduce((s, t) => s + (t.pnl_usd ?? 0), 0)
+  const totalInvested = open.reduce((s, t) => s + t.entry_price * t.shares, 0)
 
-  const input = (placeholder: string, key: keyof typeof form, width = 'w-24') => (
-    <input
-      value={form[key]}
-      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+  const inp = (placeholder: string, key: keyof typeof form, width = 'w-24') => (
+    <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
       placeholder={placeholder}
-      className={`${width} bg-[#111827] border border-[#1e293b] rounded px-2 py-1.5 text-[12px] text-[#e2e8f0] placeholder-[#4b5563] focus:outline-none focus:border-[#3b82f6]`}
-    />
+      className={`${width} bg-[#111827] border border-[#1e293b] rounded px-2 py-1.5 text-[12px] text-[#e2e8f0] placeholder-[#4b5563] focus:outline-none focus:border-[#3b82f6]`} />
   )
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header + stats */}
       <div className="px-5 py-3 border-b border-[#1e293b]">
         <div className="text-white font-bold mb-3">Paper Trading</div>
-        <div className="flex gap-4 mb-3">
-          <div className="bg-[#111827] border border-[#1e293b] rounded px-4 py-2">
-            <div className="text-[9px] text-[#64748b] uppercase mb-0.5">Open Positions</div>
-            <div className="text-white font-bold">{open.length}</div>
-          </div>
-          <div className="bg-[#111827] border border-[#1e293b] rounded px-4 py-2">
-            <div className="text-[9px] text-[#64748b] uppercase mb-0.5">Unrealized P&L</div>
-            <div className={`font-bold ${totalUnrealized >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-              {totalUnrealized >= 0 ? '+' : ''}{fmt(totalUnrealized)}
+
+        {/* Stats row */}
+        <div className="flex gap-3 mb-3 flex-wrap">
+          {[
+            { label: 'Open Positions', value: open.length, color: 'text-white' },
+            { label: 'Total Invested', value: fmt(totalInvested), color: 'text-[#3b82f6]' },
+            { label: 'Unrealized P&L', value: (totalUnrealized >= 0 ? '+' : '') + fmt(totalUnrealized), color: totalUnrealized >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]' },
+            { label: 'Realized P&L', value: (totalRealized >= 0 ? '+' : '') + fmt(totalRealized), color: totalRealized >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]' },
+          ].map(s => (
+            <div key={s.label} className="bg-[#111827] border border-[#1e293b] rounded px-3 py-2">
+              <div className="text-[9px] text-[#64748b] uppercase mb-0.5">{s.label}</div>
+              <div className={`font-bold text-[15px] ${s.color}`}>{s.value}</div>
             </div>
-          </div>
-          <div className="bg-[#111827] border border-[#1e293b] rounded px-4 py-2">
-            <div className="text-[9px] text-[#64748b] uppercase mb-0.5">Realized P&L</div>
-            <div className={`font-bold ${totalRealized >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-              {totalRealized >= 0 ? '+' : ''}{fmt(totalRealized)}
-            </div>
-          </div>
+          ))}
         </div>
+
         {/* Entry form */}
         <div className="flex items-center gap-2 flex-wrap">
-          {input('Ticker', 'ticker', 'w-20')}
-          {input('Entry $', 'entry_price')}
-          {input('Shares', 'shares')}
-          {input('Stop $', 'stop_loss')}
-          {input('Target $', 'target_1')}
-          {input('Notes', 'notes', 'w-36')}
-          <button
-            onClick={handleOpen}
-            disabled={loading}
-            className="bg-[#14532d] hover:bg-[#166534] border border-[#22c55e]/40 text-[#22c55e] text-[11px] font-bold px-4 py-1.5 rounded transition-colors disabled:opacity-50"
-          >
-            + Open Trade
+          <TickerCombobox value={form.ticker} onChange={t => setForm(f => ({ ...f, ticker: t }))} tickers={tickers} />
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-[#64748b]">Invest $</span>
+            {inp('Amount', 'amount', 'w-28')}
+          </div>
+          {inp('Stop $', 'stop_loss')}
+          {inp('Target $', 'target_1')}
+          {inp('Notes', 'notes', 'w-36')}
+          <button onClick={handleOpen} disabled={loading || !form.ticker || !form.amount}
+            className="bg-[#14532d] hover:bg-[#166534] border border-[#22c55e]/40 text-[#22c55e] text-[11px] font-bold px-4 py-1.5 rounded transition-colors disabled:opacity-50">
+            {loading ? 'Opening...' : '+ Open Trade'}
           </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* Open positions */}
         {open.length > 0 && (
           <div className="p-4">
             <div className="text-[10px] text-[#64748b] uppercase tracking-wide mb-2">Open Positions</div>
             <table className="w-full">
-              <thead>
-                <tr className="text-[8px] text-[#4b5563] uppercase border-b border-[#1e293b]">
-                  {['Ticker','Entry','Shares','Stop','Target','Live','Unr. P&L','Unr. %','Date',''].map(h => (
-                    <th key={h} className="text-left px-3 py-1.5">{h}</th>
-                  ))}
-                </tr>
-              </thead>
+              <thead><tr className="text-[8px] text-[#4b5563] uppercase border-b border-[#1e293b]">
+                {['Ticker','Invested','Entry','Shares','Stop','Target','Live','Unr. P&L','%','Date',''].map(h =>
+                  <th key={h} className="text-left px-3 py-1.5">{h}</th>)}
+              </tr></thead>
               <tbody>
-                {open.map(t => (
-                  <tr key={t.id} className="border-b border-[#0f1623] hover:bg-white/5">
-                    <td className="px-3 py-2 font-bold text-white">{t.ticker}</td>
-                    <td className="px-3 py-2 text-[#94a3b8] text-[11px]">{fmt(t.entry_price)}</td>
-                    <td className="px-3 py-2 text-[#94a3b8] text-[11px]">{t.shares}</td>
-                    <td className="px-3 py-2 text-[#ef4444] text-[11px]">{t.stop_loss ? fmt(t.stop_loss) : '—'}</td>
-                    <td className="px-3 py-2 text-[#22c55e] text-[11px]">{t.target_1 ? fmt(t.target_1) : '—'}</td>
-                    <td className="px-3 py-2 text-[#3b82f6] text-[11px]">{t.live_price ? fmt(t.live_price) : '—'}</td>
-                    <td className={`px-3 py-2 text-[11px] font-semibold ${(t.unrealized_pnl_usd ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                      {t.unrealized_pnl_usd != null ? ((t.unrealized_pnl_usd >= 0 ? '+' : '') + fmt(t.unrealized_pnl_usd)) : '—'}
-                    </td>
-                    <td className={`px-3 py-2 text-[11px] ${(t.unrealized_pnl_pct ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                      {t.unrealized_pnl_pct != null ? `${t.unrealized_pnl_pct >= 0 ? '+' : ''}${t.unrealized_pnl_pct.toFixed(1)}%` : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-[#64748b] text-[10px]">{t.entry_date}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex gap-2">
+                {open.map(t => {
+                  const invested = t.entry_price * t.shares
+                  return (
+                    <tr key={t.id} className="border-b border-[#0f1623] hover:bg-white/5">
+                      <td className="px-3 py-2 font-bold text-white">{t.ticker}</td>
+                      <td className="px-3 py-2 text-[#3b82f6] text-[11px]">{fmt(invested)}</td>
+                      <td className="px-3 py-2 text-[#94a3b8] text-[11px]">{fmt(t.entry_price)}</td>
+                      <td className="px-3 py-2 text-[#64748b] text-[10px]">{t.shares}</td>
+                      <td className="px-3 py-2 text-[#ef4444] text-[11px]">{t.stop_loss ? fmt(t.stop_loss) : '—'}</td>
+                      <td className="px-3 py-2 text-[#22c55e] text-[11px]">{t.target_1 ? fmt(t.target_1) : '—'}</td>
+                      <td className="px-3 py-2 text-[#3b82f6] text-[11px]">{t.live_price ? fmt(t.live_price) : '—'}</td>
+                      <td className={`px-3 py-2 text-[11px] font-semibold ${(t.unrealized_pnl_usd ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                        {t.unrealized_pnl_usd != null ? ((t.unrealized_pnl_usd >= 0 ? '+' : '') + fmt(t.unrealized_pnl_usd)) : '—'}
+                      </td>
+                      <td className={`px-3 py-2 text-[11px] ${(t.unrealized_pnl_pct ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                        {t.unrealized_pnl_pct != null ? `${t.unrealized_pnl_pct >= 0 ? '+' : ''}${t.unrealized_pnl_pct.toFixed(1)}%` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-[#64748b] text-[10px]">{t.entry_date}</td>
+                      <td className="px-3 py-2">
                         {closeId === t.id ? (
-                          <>
+                          <div className="flex gap-1 items-center">
                             <input value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="Exit $"
                               className="w-20 bg-[#111827] border border-[#ef4444]/50 rounded px-2 py-0.5 text-[11px] text-[#e2e8f0] focus:outline-none" />
-                            <button onClick={handleClose} className="text-[#22c55e] text-[10px] font-bold hover:text-white">✓</button>
+                            <button onClick={handleClose} className="text-[#22c55e] text-[11px] font-bold hover:text-white">✓</button>
                             <button onClick={() => setCloseId(null)} className="text-[#64748b] text-[10px] hover:text-white">✕</button>
-                          </>
+                          </div>
                         ) : (
-                          <>
-                            <button onClick={() => setCloseId(t.id)} className="text-[#f59e0b] text-[10px] hover:text-white">Close</button>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setCloseId(t.id); setClosePrice(String(t.live_price ?? '')) }}
+                              className="text-[#f59e0b] text-[10px] hover:text-white">Close</button>
                             <button onClick={() => handleDelete(t.id)} className="text-[#ef4444] text-[10px] hover:text-white">Del</button>
-                          </>
+                          </div>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
 
-        {/* Closed trades */}
         {closed.length > 0 && (
           <div className="p-4">
             <div className="text-[10px] text-[#64748b] uppercase tracking-wide mb-2">Closed Trades</div>
             <table className="w-full">
-              <thead>
-                <tr className="text-[8px] text-[#4b5563] uppercase border-b border-[#1e293b]">
-                  {['Ticker','Entry','Exit','Shares','P&L $','P&L %','Entry Date','Exit Date',''].map(h => (
-                    <th key={h} className="text-left px-3 py-1.5">{h}</th>
-                  ))}
-                </tr>
-              </thead>
+              <thead><tr className="text-[8px] text-[#4b5563] uppercase border-b border-[#1e293b]">
+                {['Ticker','Invested','Entry','Exit','Shares','P&L $','P&L %','Entry Date','Exit Date',''].map(h =>
+                  <th key={h} className="text-left px-3 py-1.5">{h}</th>)}
+              </tr></thead>
               <tbody>
                 {closed.map(t => (
                   <tr key={t.id} className="border-b border-[#0f1623] hover:bg-white/5 opacity-70">
                     <td className="px-3 py-2 font-bold text-white">{t.ticker}</td>
+                    <td className="px-3 py-2 text-[#3b82f6] text-[11px]">{fmt(t.entry_price * t.shares)}</td>
                     <td className="px-3 py-2 text-[#94a3b8] text-[11px]">{fmt(t.entry_price)}</td>
                     <td className="px-3 py-2 text-[#94a3b8] text-[11px]">{t.exit_price ? fmt(t.exit_price) : '—'}</td>
-                    <td className="px-3 py-2 text-[#94a3b8] text-[11px]">{t.shares}</td>
+                    <td className="px-3 py-2 text-[#64748b] text-[10px]">{t.shares}</td>
                     <td className={`px-3 py-2 text-[11px] font-semibold ${(t.pnl_usd ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
                       {t.pnl_usd != null ? ((t.pnl_usd >= 0 ? '+' : '') + fmt(t.pnl_usd)) : '—'}
                     </td>
@@ -221,7 +252,7 @@ export default function PaperPage() {
 
         {trades.length === 0 && (
           <div className="flex items-center justify-center h-40 text-[#4b5563] text-sm">
-            No paper trades yet. Enter a trade above to get started.
+            No paper trades yet. Search a ticker above and enter an investment amount.
           </div>
         )}
       </div>

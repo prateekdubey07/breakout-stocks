@@ -47,6 +47,10 @@ export async function runBacktest(ticker: string, start: string, end: string, st
   return res.json()
 }
 
+export async function getDefaultTickers(): Promise<string[]> {
+  return (await fetch(`${BASE}/api/default-tickers`)).json()
+}
+
 export async function getNews(tickers: string[]) {
   const q = tickers.join(',')
   return (await fetch(`${BASE}/api/news?tickers=${q}`)).json()

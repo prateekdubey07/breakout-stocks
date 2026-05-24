@@ -106,6 +106,14 @@ async def ws_alerts(ws: WebSocket):
         manager.disconnect(ws)
 
 
+@app.get("/api/default-tickers")
+def get_default_tickers():
+    conn = get_conn()
+    rows = [r[0] for r in conn.execute("SELECT ticker FROM default_tickers ORDER BY ticker").fetchall()]
+    conn.close()
+    return rows
+
+
 @app.get("/api/watchlist")
 def get_watchlist():
     conn = get_conn()
