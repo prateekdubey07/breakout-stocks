@@ -4,10 +4,13 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import init_db
-from models import ScanRequest, BpsResult
+from database import init_db, get_conn
+from models import ScanRequest, BpsResult, BacktestRequest
 from scoring.bps_engine import score_ticker
 from data.fetcher import fetch_ohlcv
+from backtest.extractor import extract_signals
+from backtest.analyst import evaluate_signals
+import json
 
 
 @asynccontextmanager
@@ -65,3 +68,19 @@ async def ohlcv(ticker: str, period: str = "3mo"):
     data = [{"date": str(d.date()), "close": round(float(c), 2)}
             for d, c in zip(df.index, df["Close"])]
     return {"data": data}
+
+
+@app.post("/api/backtest")
+async def backtest(req: BacktestRequest):
+    import asyncio
+    loop = asyncio.get_event_loop()
+    signals = await loop.run_in_executor(executor, extract_signals, req.ticker, req.start, req.end)
+    summary = evaluate_signals(signals)
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO backtest_runs (ticker, start_date, end_date, summary_json) VALUES (?,?,?,?)",
+        (req.ticker, req.start, req.end, json.dumps(summary))
+    )
+    conn.commit()
+    conn.close()
+    return summary
