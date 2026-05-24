@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useScan } from '@/hooks/useScan'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import KpiStrip from '@/components/KpiStrip'
@@ -42,6 +42,8 @@ export default function ScannerPage() {
     const tickers = input.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
     scan(tickers, minBps)
   }
+
+  useEffect(() => { handleScan() }, [])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
