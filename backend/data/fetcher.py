@@ -6,7 +6,7 @@ _OHLCV_COLS = ["Open", "High", "Low", "Close", "Volume"]
 
 
 def fetch_ohlcv(ticker: str, period: str = "6mo") -> pd.DataFrame:
-    df = yf.download(ticker, period=period, auto_adjust=True, progress=False, silent=True)
+    df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(1)
     else:
