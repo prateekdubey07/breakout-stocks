@@ -21,5 +21,5 @@ export function useScan() {
     }
   }, [])
 
-  return { results, loading, error, scan }
+  return { results, loading, error, scan, setResults }
 }

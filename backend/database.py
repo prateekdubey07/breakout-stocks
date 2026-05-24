@@ -77,6 +77,13 @@ def init_db():
             pnl_pct REAL,
             notes TEXT
         );
+        CREATE TABLE IF NOT EXISTS scan_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scanned_at TEXT DEFAULT (datetime('now')),
+            tickers_json TEXT,
+            results_json TEXT NOT NULL,
+            trigger TEXT DEFAULT 'manual'
+        );
     """)
     conn.commit()
 

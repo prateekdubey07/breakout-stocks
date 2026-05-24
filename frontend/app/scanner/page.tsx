@@ -7,11 +7,21 @@ import BpsTable from '@/components/BpsTable'
 import TickerDetail from '@/components/TickerDetail'
 import AlertBanner from '@/components/AlertBanner'
 
+const BASE = 'http://localhost:8000'
+
+function timeAgo(iso: string) {
+  const diff = Math.floor((Date.now() - new Date(iso + 'Z').getTime()) / 1000)
+  if (diff < 60) return `${diff}s ago`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  return `${Math.floor(diff / 3600)}h ago`
+}
+
 export default function ScannerPage() {
   const [input, setInput] = useState('')
   const [minBps, setMinBps] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
-  const { results, loading, error, scan } = useScan()
+  const [lastScan, setLastScan] = useState<{ scanned_at: string; trigger: string } | null>(null)
+  const { results, loading, error, scan, setResults } = useScan()
   const { alerts, connected } = useWebSocket()
 
   const selectedResult = useMemo(
@@ -36,13 +46,20 @@ export default function ScannerPage() {
     ]
   }, [results, connected])
 
+  // On mount: load default tickers + restore cached scan results (no auto re-scan)
   useEffect(() => {
-    fetch('http://localhost:8000/api/default-tickers')
+    fetch(`${BASE}/api/default-tickers`)
       .then(r => r.json())
-      .then((tickers: string[]) => {
-        const joined = tickers.join(',')
-        setInput(joined)
-        scan(tickers, minBps)
+      .then((tickers: string[]) => setInput(tickers.join(',')))
+      .catch(() => {})
+
+    fetch(`${BASE}/api/scan-results/latest`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.candidates?.length) {
+          setResults(d.candidates)
+          setLastScan({ scanned_at: d.scanned_at, trigger: d.trigger })
+        }
       })
       .catch(() => {})
   }, [])
@@ -50,6 +67,7 @@ export default function ScannerPage() {
   function handleScan() {
     const tickers = input.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
     scan(tickers, minBps)
+    setLastScan(null)
   }
 
   return (
@@ -79,6 +97,11 @@ export default function ScannerPage() {
           {loading ? 'Scanning...' : 'Scan'}
         </button>
         {error && <span className="text-[10px] text-[#ef4444]">{error}</span>}
+        {lastScan && (
+          <span className="text-[10px] text-[#64748b]">
+            {lastScan.trigger === 'auto' ? '⚡ auto' : '↩ cached'} · {timeAgo(lastScan.scanned_at)}
+          </span>
+        )}
       </div>
 
       <KpiStrip kpis={kpis} />

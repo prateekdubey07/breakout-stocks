@@ -46,6 +46,18 @@ def health():
     return {"status": "ok"}
 
 
+def _save_scan_results(tickers: list, candidates: list, trigger: str = "manual"):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO scan_results (tickers_json, results_json, trigger) VALUES (?,?,?)",
+        (json.dumps(tickers), json.dumps([c.dict() if hasattr(c, 'dict') else c for c in candidates]), trigger)
+    )
+    # keep only last 50 scans
+    conn.execute("DELETE FROM scan_results WHERE id NOT IN (SELECT id FROM scan_results ORDER BY id DESC LIMIT 50)")
+    conn.commit()
+    conn.close()
+
+
 @app.post("/api/scan")
 async def scan(req: ScanRequest):
     import asyncio
@@ -56,7 +68,22 @@ async def scan(req: ScanRequest):
     ])
     candidates = [r for r in results if r.breakout_probability_score >= req.min_bps]
     candidates.sort(key=lambda x: x.breakout_probability_score, reverse=True)
+    _save_scan_results(req.tickers, candidates, trigger="manual")
     return {"candidates": candidates}
+
+
+@app.get("/api/scan-results/latest")
+def get_latest_scan():
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM scan_results ORDER BY id DESC LIMIT 1").fetchone()
+    conn.close()
+    if not row:
+        return {"candidates": [], "scanned_at": None, "trigger": None}
+    return {
+        "candidates": json.loads(row["results_json"]),
+        "scanned_at": row["scanned_at"],
+        "trigger": row["trigger"],
+    }
 
 
 @app.post("/api/analyze")
