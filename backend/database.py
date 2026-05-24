@@ -52,6 +52,11 @@ def init_db():
             published_at TEXT,
             fetched_at TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS fundamentals_cache (
+            ticker TEXT PRIMARY KEY,
+            data_json TEXT NOT NULL,
+            cached_at TEXT DEFAULT (datetime('now'))
+        );
         CREATE TABLE IF NOT EXISTS paper_trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ticker TEXT NOT NULL,
