@@ -17,7 +17,7 @@ export default function NewsPage() {
     try {
       const list = tickers.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
       const data = await getNews(list)
-      setItems(data)
+      setItems(Array.isArray(data) ? data : (data.items ?? []))
     } catch {} finally {
       setLoading(false)
     }
