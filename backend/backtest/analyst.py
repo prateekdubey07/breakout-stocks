@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def evaluate_signals(signals: list[dict]) -> dict:
+def evaluate_signals(signals: list[dict], starting_capital: float = 10_000.0) -> dict:
     if not signals:
         return {"total_signals": 0, "error": "no signals found"}
 
@@ -60,6 +60,21 @@ def evaluate_signals(signals: list[dict]) -> dict:
         peak = max(peak, cum)
         max_dd = min(max_dd, cum - peak)
 
+    # $10K capital simulation — equal-weight per trade, no compounding overlap
+    capital = starting_capital
+    equity_curve = [{"trade": 0, "date": outcomes[0]["signal_date"], "capital": round(capital, 2)}]
+    for i, o in enumerate(outcomes):
+        position_size = capital  # full capital per trade (single stock, sequential)
+        trade_pnl = position_size * (o["actual_return_pct"] / 100)
+        capital += trade_pnl
+        capital = max(capital, 0.01)  # prevent going negative
+        outcomes[i]["capital_after"] = round(capital, 2)
+        outcomes[i]["trade_pnl_usd"] = round(trade_pnl, 2)
+        equity_curve.append({"trade": i + 1, "date": o["signal_date"], "capital": round(capital, 2)})
+
+    total_return_pct = round((capital - starting_capital) / starting_capital * 100, 2)
+    final_capital = round(capital, 2)
+
     return {
         "total_signals": total,
         "win_rate_t1": round(win_rate, 3),
@@ -71,5 +86,10 @@ def evaluate_signals(signals: list[dict]) -> dict:
         "max_drawdown_pct": round(max_dd, 2),
         "sharpe_ratio": round(sharpe, 2),
         "avg_days_to_resolution": round(float(np.mean([o["days_to_resolution"] for o in outcomes])), 1),
+        "starting_capital": starting_capital,
+        "final_capital": final_capital,
+        "total_return_pct": total_return_pct,
+        "total_pnl_usd": round(final_capital - starting_capital, 2),
+        "equity_curve": equity_curve,
         "signals": outcomes,
     }

@@ -8,6 +8,7 @@ export default function BacktestPage() {
   const [ticker, setTicker] = useState('')
   const [start, setStart] = useState('2023-01-01')
   const [end, setEnd] = useState(new Date().toISOString().slice(0, 10))
+  const [capital, setCapital] = useState(10000)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<BacktestSummary | null>(null)
@@ -17,7 +18,7 @@ export default function BacktestPage() {
     setLoading(true)
     setError(null)
     try {
-      const data = await runBacktest(ticker.trim().toUpperCase(), start, end)
+      const data = await runBacktest(ticker.trim().toUpperCase(), start, end, capital)
       setResult(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Backtest failed')
@@ -35,13 +36,22 @@ export default function BacktestPage() {
             value={ticker}
             onChange={e => setTicker(e.target.value)}
             placeholder="Ticker (e.g. NVDA)"
-            className="bg-[#111827] border border-[#1e293b] rounded px-3 py-1.5 text-[12px] text-[#e2e8f0] placeholder-[#4b5563] focus:outline-none focus:border-[#3b82f6] w-40"
+            className="bg-[#111827] border border-[#1e293b] rounded px-3 py-1.5 text-[12px] text-[#e2e8f0] placeholder-[#4b5563] focus:outline-none focus:border-[#3b82f6] w-32"
           />
           <input type="date" value={start} onChange={e => setStart(e.target.value)}
             className="bg-[#111827] border border-[#1e293b] rounded px-3 py-1.5 text-[12px] text-[#e2e8f0] focus:outline-none focus:border-[#3b82f6]" />
           <span className="text-[#64748b] text-[11px]">to</span>
           <input type="date" value={end} onChange={e => setEnd(e.target.value)}
             className="bg-[#111827] border border-[#1e293b] rounded px-3 py-1.5 text-[12px] text-[#e2e8f0] focus:outline-none focus:border-[#3b82f6]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-[#64748b]">$</span>
+            <input
+              type="number" value={capital} min={100} step={1000}
+              onChange={e => setCapital(Number(e.target.value))}
+              className="w-28 bg-[#111827] border border-[#1e293b] rounded px-2 py-1.5 text-[12px] text-[#e2e8f0] focus:outline-none focus:border-[#3b82f6]"
+              placeholder="Starting $"
+            />
+          </div>
           <button
             onClick={handleRun}
             disabled={loading || !ticker}

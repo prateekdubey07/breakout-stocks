@@ -52,6 +52,22 @@ def init_db():
             published_at TEXT,
             fetched_at TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS paper_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
+            entry_price REAL NOT NULL,
+            shares REAL NOT NULL,
+            stop_loss REAL,
+            target_1 REAL,
+            target_2 REAL,
+            entry_date TEXT DEFAULT (date('now')),
+            exit_price REAL,
+            exit_date TEXT,
+            status TEXT DEFAULT 'OPEN',
+            pnl_usd REAL,
+            pnl_pct REAL,
+            notes TEXT
+        );
     """)
     conn.commit()
     conn.close()

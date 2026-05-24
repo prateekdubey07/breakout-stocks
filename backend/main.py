@@ -85,7 +85,7 @@ async def backtest(req: BacktestRequest):
     import asyncio
     loop = asyncio.get_event_loop()
     signals = await loop.run_in_executor(executor, extract_signals, req.ticker, req.start, req.end)
-    summary = evaluate_signals(signals)
+    summary = evaluate_signals(signals, req.starting_capital)
     conn = get_conn()
     conn.execute(
         "INSERT INTO backtest_runs (ticker, start_date, end_date, summary_json) VALUES (?,?,?,?)",
@@ -154,6 +154,76 @@ async def news(tickers: str = Query(...)):
     loop = asyncio.get_event_loop()
     items = await loop.run_in_executor(executor, fetch_news, ticker_list)
     return {"items": items}
+
+
+@app.get("/api/paper-trades")
+def get_paper_trades():
+    conn = get_conn()
+    rows = [dict(r) for r in conn.execute("SELECT * FROM paper_trades ORDER BY entry_date DESC").fetchall()]
+    conn.close()
+    # attach live price / unrealized PnL for open positions
+    for row in rows:
+        if row["status"] == "OPEN":
+            try:
+                from data.fetcher import fetch_ohlcv
+                df = fetch_ohlcv(row["ticker"], period="5d")
+                live = float(df["Close"].iloc[-1])
+                row["live_price"] = round(live, 2)
+                row["unrealized_pnl_usd"] = round((live - row["entry_price"]) * row["shares"], 2)
+                row["unrealized_pnl_pct"] = round((live - row["entry_price"]) / row["entry_price"] * 100, 2)
+            except Exception:
+                row["live_price"] = None
+                row["unrealized_pnl_usd"] = None
+                row["unrealized_pnl_pct"] = None
+    return rows
+
+
+@app.post("/api/paper-trades")
+def open_paper_trade(body: dict):
+    ticker = body.get("ticker", "").upper()
+    entry_price = float(body.get("entry_price", 0))
+    shares = float(body.get("shares", 0))
+    if not ticker or entry_price <= 0 or shares <= 0:
+        raise HTTPException(400, "ticker, entry_price and shares required")
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO paper_trades (ticker, entry_price, shares, stop_loss, target_1, target_2, notes) VALUES (?,?,?,?,?,?,?)",
+        (ticker, entry_price, shares, body.get("stop_loss"), body.get("target_1"), body.get("target_2"), body.get("notes", ""))
+    )
+    trade_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return {"id": trade_id, "ok": True}
+
+
+@app.patch("/api/paper-trades/{trade_id}/close")
+def close_paper_trade(trade_id: int, body: dict):
+    exit_price = float(body.get("exit_price", 0))
+    if exit_price <= 0:
+        raise HTTPException(400, "exit_price required")
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM paper_trades WHERE id=?", (trade_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "trade not found")
+    row = dict(row)
+    pnl_usd = round((exit_price - row["entry_price"]) * row["shares"], 2)
+    pnl_pct = round((exit_price - row["entry_price"]) / row["entry_price"] * 100, 2)
+    conn.execute(
+        "UPDATE paper_trades SET exit_price=?, exit_date=date('now'), status='CLOSED', pnl_usd=?, pnl_pct=? WHERE id=?",
+        (exit_price, pnl_usd, pnl_pct, trade_id)
+    )
+    conn.commit()
+    conn.close()
+    return {"pnl_usd": pnl_usd, "pnl_pct": pnl_pct, "ok": True}
+
+
+@app.delete("/api/paper-trades/{trade_id}")
+def delete_paper_trade(trade_id: int):
+    conn = get_conn()
+    conn.execute("DELETE FROM paper_trades WHERE id=?", (trade_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @app.post("/api/upload/csv")

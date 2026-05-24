@@ -38,11 +38,11 @@ export async function getWatchlistStatus() {
   return (await fetch(`${BASE}/api/watchlist/status`)).json()
 }
 
-export async function runBacktest(ticker: string, start: string, end: string) {
+export async function runBacktest(ticker: string, start: string, end: string, starting_capital = 10000) {
   const res = await fetch(`${BASE}/api/backtest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ticker, start, end }),
+    body: JSON.stringify({ ticker, start, end, starting_capital }),
   })
   return res.json()
 }

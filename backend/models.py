@@ -42,3 +42,4 @@ class BacktestRequest(BaseModel):
     ticker: str
     start: str
     end: str
+    starting_capital: float = 10_000.0

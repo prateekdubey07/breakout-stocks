@@ -55,6 +55,11 @@ export interface BacktestSummary {
   max_drawdown_pct: number
   sharpe_ratio: number
   avg_days_to_resolution: number
+  starting_capital: number
+  final_capital: number
+  total_return_pct: number
+  total_pnl_usd: number
+  equity_curve: { trade: number; date: string; capital: number }[]
   signals: any[]
 }
 

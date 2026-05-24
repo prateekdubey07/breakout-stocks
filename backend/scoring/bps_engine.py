@@ -34,7 +34,7 @@ def _entry_stop_targets(price: float, atr: float) -> tuple[str, str, str, str, s
 
 
 def score_ticker(ticker: str) -> BpsResult:
-    df = fetch_ohlcv(ticker, period="1y")
+    df = fetch_ohlcv(ticker, period="2y")
     info = fetch_fundamentals(ticker)
 
     tech = compute_technical_score(df)

@@ -45,12 +45,12 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     atr5 = ta.atr(df["High"], df["Low"], close, 5)
     out["atr_ratio"] = atr5 / atr20.replace(0, np.nan)
 
-    high_252 = close.rolling(252).max()
+    high_252 = close.rolling(252, min_periods=150).max()
     out["pct_from_52w_high"] = (close - high_252) / high_252
 
-    out["above_20ma"] = (close > ta.sma(close, 20)).astype(int)
-    out["above_50ma"] = (close > ta.sma(close, 50)).astype(int)
-    out["above_200ma"] = (close > ta.sma(close, 200)).astype(int)
+    out["above_20ma"] = (close > ta.sma(close, 20)).fillna(0).astype(int)
+    out["above_50ma"] = (close > ta.sma(close, 50)).fillna(0).astype(int)
+    out["above_200ma"] = (close > ta.sma(close, 200)).fillna(0).astype(int)
 
     obv = ta.obv(close, volume)
     out["obv_slope"] = obv.diff(10) / obv.abs().rolling(10).mean().replace(0, np.nan)
