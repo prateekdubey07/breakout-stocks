@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db, get_conn
@@ -12,6 +12,8 @@ from backtest.extractor import extract_signals
 from backtest.analyst import evaluate_signals
 from websocket.manager import manager
 from watchlist.monitor import run_watchlist_scan
+from news.aggregator import fetch_news
+from data.csv_handler import process_csv_upload
 import json
 
 
@@ -141,3 +143,18 @@ def remove_from_watchlist(ticker: str):
     conn.commit()
     conn.close()
     return {"ok": True}
+
+
+@app.get("/api/news")
+async def news(tickers: str = Query(...)):
+    ticker_list = [t.strip().upper() for t in tickers.split(",")]
+    import asyncio
+    loop = asyncio.get_event_loop()
+    items = await loop.run_in_executor(executor, fetch_news, ticker_list)
+    return {"items": items}
+
+
+@app.post("/api/upload/csv")
+async def upload_csv(ticker: str, file: UploadFile = File(...)):
+    contents = await file.read()
+    return process_csv_upload(contents, ticker)
