@@ -1,7 +1,11 @@
+import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "breakoutstocks.db"
+# DB_PATH env var lets Railway (or any deployment) point to a persistent volume.
+# Locally falls back to the backend directory.
+_default = str(Path(__file__).parent / "breakoutstocks.db")
+DB_PATH = Path(os.getenv("DB_PATH", _default))
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
