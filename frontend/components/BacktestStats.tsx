@@ -51,7 +51,7 @@ export default function BacktestStats({ summary }: { summary: BacktestSummary })
                 <Tooltip
                   contentStyle={{ background: '#1e293b', border: 'none', fontSize: 11 }}
                   labelFormatter={l => `Trade ${l}`}
-                  formatter={(v: number) => [fmt(v), 'Capital']}
+                  formatter={(v) => [fmt(Number(v ?? 0)), 'Capital']}
                 />
                 <ReferenceLine y={s.starting_capital} stroke="#374151" strokeDasharray="4 2" />
                 <Line type="monotone" dataKey="capital" stroke={isProfit ? '#22c55e' : '#ef4444'} strokeWidth={2} dot={false} />
