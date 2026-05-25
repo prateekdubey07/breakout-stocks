@@ -66,9 +66,11 @@ def _period_to_start(period: str) -> datetime:
 # ---------------------------------------------------------------------------
 def prefetch_ohlcv_batch(tickers: list, period: str = "2y") -> None:
     """Fetch OHLCV for all tickers in a single Alpaca request.
-    Clears and repopulates _OHLCV_BATCH_CACHE. No-op if Alpaca unavailable."""
+    Always includes SPY for RS calculation. No-op if Alpaca unavailable."""
     global _OHLCV_BATCH_CACHE
     _OHLCV_BATCH_CACHE.clear()
+    # Always include SPY for relative strength calculation
+    tickers = list(dict.fromkeys(["SPY"] + list(tickers)))
     client = _get_alpaca()
     if not client:
         return

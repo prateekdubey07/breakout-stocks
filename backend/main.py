@@ -283,6 +283,41 @@ def delete_paper_trade(trade_id: int):
     return {"ok": True}
 
 
+@app.get("/api/scan/gap")
+async def gap_scanner(min_gap_pct: float = 2.0):
+    """Return tickers whose last daily close gapped vs prior close by >= min_gap_pct%.
+    Uses OHLCV already cached from Alpaca batch; no extra API calls needed."""
+    conn = get_conn()
+    tickers = [r[0] for r in conn.execute("SELECT ticker FROM default_tickers ORDER BY ticker").fetchall()]
+    conn.close()
+
+    # Prefetch if cache empty
+    from data.fetcher import _OHLCV_BATCH_CACHE, prefetch_ohlcv_batch
+    if not _OHLCV_BATCH_CACHE:
+        await asyncio.get_event_loop().run_in_executor(executor, prefetch_ohlcv_batch, tickers, "5d")
+
+    results = []
+    for ticker in tickers:
+        df = _OHLCV_BATCH_CACHE.get(ticker.upper())
+        if df is None or len(df) < 2:
+            continue
+        prior_close = float(df["Close"].iloc[-2])
+        last_close  = float(df["Close"].iloc[-1])
+        if prior_close <= 0:
+            continue
+        gap_pct = round((last_close - prior_close) / prior_close * 100, 2)
+        if abs(gap_pct) >= min_gap_pct:
+            results.append({
+                "ticker": ticker,
+                "gap_pct": gap_pct,
+                "last_close": round(last_close, 2),
+                "prior_close": round(prior_close, 2),
+                "direction": "up" if gap_pct > 0 else "down",
+            })
+    results.sort(key=lambda x: abs(x["gap_pct"]), reverse=True)
+    return {"gaps": results, "threshold_pct": min_gap_pct}
+
+
 @app.post("/api/upload/csv")
 async def upload_csv(ticker: str, file: UploadFile = File(...)):
     contents = await file.read()

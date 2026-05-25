@@ -18,6 +18,7 @@ class Fundamentals(BaseModel):
     revenue_growth_yoy: str
     peg_ratio: Optional[float] = None
     catalyst: str
+    sector: str = "Unknown"
 
 class BpsResult(BaseModel):
     ticker: str
@@ -34,6 +35,7 @@ class BpsResult(BaseModel):
     target_2: str
     risk_reward: str
     timeframe: str
+    rs_vs_spy: Optional[float] = None
 
 class ScanRequest(BaseModel):
     tickers: List[str]

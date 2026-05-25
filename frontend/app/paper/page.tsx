@@ -17,6 +17,7 @@ interface Trade {
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
 }
+function round2(n: number) { return Math.round(n * 100) / 100 }
 
 export default function PaperPage() {
   const [trades, setTrades] = useState<Trade[]>([])
@@ -78,11 +79,18 @@ export default function PaperPage() {
 
   const handleDelete = async (id: number) => { await fetch(`${BASE}/api/paper-trades/${id}`, { method: 'DELETE' }); load() }
 
+  const [trailingPct, setTrailingPct] = useState<Record<number, string>>({})
+
   const open = trades.filter(t => t.status === 'OPEN')
   const closed = trades.filter(t => t.status === 'CLOSED')
   const totalUnrealized = open.reduce((s, t) => s + (t.unrealized_pnl_usd ?? 0), 0)
   const totalRealized = closed.reduce((s, t) => s + (t.pnl_usd ?? 0), 0)
   const totalInvested = open.reduce((s, t) => s + t.entry_price * t.shares, 0)
+  // Portfolio heat: total $ at risk = sum of (entry - stop) * shares for open trades with stop set
+  const portfolioHeat = open.reduce((s, t) => {
+    if (t.stop_loss == null || t.stop_loss <= 0) return s
+    return s + Math.max(0, (t.entry_price - t.stop_loss) * t.shares)
+  }, 0)
 
   const inp = (placeholder: string, key: keyof typeof form, width = 'w-24') => (
     <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
@@ -102,6 +110,7 @@ export default function PaperPage() {
             { label: 'Total Invested', value: fmt(totalInvested), color: 'text-[#3b82f6]' },
             { label: 'Unrealized P&L', value: (totalUnrealized >= 0 ? '+' : '') + fmt(totalUnrealized), color: totalUnrealized >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]' },
             { label: 'Realized P&L', value: (totalRealized >= 0 ? '+' : '') + fmt(totalRealized), color: totalRealized >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]' },
+            { label: 'Portfolio Heat', value: portfolioHeat > 0 ? fmt(portfolioHeat) : '—', color: portfolioHeat > 500 ? 'text-[#ef4444]' : portfolioHeat > 0 ? 'text-[#f59e0b]' : 'text-[#4b5563]' },
           ].map(s => (
             <div key={s.label} className="bg-[#111827] border border-[#1e293b] rounded px-3 py-2">
               <div className="text-[9px] text-[#64748b] uppercase mb-0.5">{s.label}</div>
@@ -133,7 +142,7 @@ export default function PaperPage() {
             <div className="text-[10px] text-[#64748b] uppercase tracking-wide mb-2">Open Positions</div>
             <table className="w-full">
               <thead><tr className="text-[8px] text-[#4b5563] uppercase border-b border-[#1e293b]">
-                {['Ticker','Invested','Entry','Shares','Stop','Target','Live','Unr. P&L','%','Date',''].map(h =>
+                {['Ticker','Invested','Entry','Shares','Stop','Trail%','Trail Stop','Target','Live','Unr. P&L','%','Date',''].map(h =>
                   <th key={h} className="text-left px-3 py-1.5">{h}</th>)}
               </tr></thead>
               <tbody>
@@ -146,6 +155,28 @@ export default function PaperPage() {
                       <td className="px-3 py-2 text-[#94a3b8] text-[11px]">{fmt(t.entry_price)}</td>
                       <td className="px-3 py-2 text-[#64748b] text-[10px]">{t.shares}</td>
                       <td className="px-3 py-2 text-[#ef4444] text-[11px]">{t.stop_loss ? fmt(t.stop_loss) : '—'}</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number" min={0.5} max={20} step={0.5} placeholder="%"
+                          value={trailingPct[t.id] ?? ''}
+                          onChange={e => setTrailingPct(p => ({ ...p, [t.id]: e.target.value }))}
+                          className="w-12 bg-[#0a0e17] border border-[#1e293b] rounded px-1 py-0.5 text-[10px] text-center text-[#e2e8f0] focus:outline-none focus:border-[#f59e0b]"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-[11px]">
+                        {(() => {
+                          const pct = parseFloat(trailingPct[t.id] ?? '')
+                          const ref = t.live_price ?? t.entry_price
+                          if (isNaN(pct) || pct <= 0) return <span className="text-[#4b5563]">—</span>
+                          const trailStop = round2(ref * (1 - pct / 100))
+                          const improved = t.stop_loss != null && trailStop > t.stop_loss
+                          return (
+                            <span className={improved ? 'text-[#22c55e] font-semibold' : 'text-[#f59e0b]'}>
+                              {fmt(trailStop)}{improved ? ' ↑' : ''}
+                            </span>
+                          )
+                        })()}
+                      </td>
                       <td className="px-3 py-2 text-[#22c55e] text-[11px]">{t.target_1 ? fmt(t.target_1) : '—'}</td>
                       <td className="px-3 py-2 text-[#3b82f6] text-[11px]">{t.live_price ? fmt(t.live_price) : '—'}</td>
                       <td className={`px-3 py-2 text-[11px] font-semibold ${(t.unrealized_pnl_usd ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>

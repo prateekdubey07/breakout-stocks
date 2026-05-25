@@ -96,6 +96,19 @@ def score_ticker(ticker: str) -> BpsResult:
     price = float(df["Close"].iloc[-1])
     entry, stop, t1, t2, rr = _entry_stop_targets(price, tech.atr_20, total)
 
+    # Relative strength vs SPY (20-day return ratio)
+    rs_vs_spy: float | None = None
+    try:
+        from data.fetcher import _OHLCV_BATCH_CACHE
+        spy_df = _OHLCV_BATCH_CACHE.get("SPY")
+        if spy_df is not None and len(spy_df) >= 21:
+            spy_ret = float(spy_df["Close"].iloc[-1]) / float(spy_df["Close"].iloc[-21]) - 1
+            tkr_ret = float(df["Close"].iloc[-1]) / float(df["Close"].iloc[-21]) - 1
+            if abs(spy_ret) > 1e-6:
+                rs_vs_spy = round(tkr_ret / abs(spy_ret), 3)
+    except Exception:
+        pass
+
     # Per-component technical breakdown for diagnosis
     _vol_pts  = 10 if tech.volume_ratio > 2.0 else 6 if tech.volume_ratio >= 1.5 else 3 if tech.volume_ratio >= 1.2 else 0
     _high_pts = 8 if tech.pct_from_52w_high >= -3.0 else 4 if tech.pct_from_52w_high >= -8.0 else 0
@@ -133,6 +146,7 @@ def score_ticker(ticker: str) -> BpsResult:
             revenue_growth_yoy=fund.revenue_growth_yoy,
             peg_ratio=fund.peg_ratio,
             catalyst=fund.catalyst,
+            sector=info.get("sector") or "Unknown",
         ),
         risk_flags=risk_flags,
         entry_zone=entry,
@@ -141,6 +155,7 @@ def score_ticker(ticker: str) -> BpsResult:
         target_2=t2,
         risk_reward=rr,
         timeframe="5-10 trading sessions",
+        rs_vs_spy=rs_vs_spy,
     )
 
 
@@ -168,6 +183,7 @@ def _zero_result(ticker: str, flags: list) -> BpsResult:
             revenue_growth_yoy="N/A",
             peg_ratio=None,
             catalyst="Disqualified",
+            sector="Unknown",
         ),
         risk_flags=flags,
         entry_zone="N/A",

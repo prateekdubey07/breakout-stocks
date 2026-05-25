@@ -16,6 +16,7 @@ export interface Fundamentals {
   revenue_growth_yoy: string
   peg_ratio: number | null
   catalyst: string
+  sector: string
 }
 
 export interface BpsResult {
@@ -33,6 +34,7 @@ export interface BpsResult {
   target_2: string
   risk_reward: string
   timeframe: string
+  rs_vs_spy: number | null
 }
 
 export interface WatchlistAlert {

@@ -193,6 +193,7 @@ export default function TickerDetail({ result }: { result: BpsResult | null }) {
           ['EPS Growth YoY', f.eps_growth_yoy],
           ['Rev Growth YoY', f.revenue_growth_yoy],
           ['PEG Ratio', f.peg_ratio ?? 'N/A'],
+          ['Sector', f.sector ?? 'Unknown'],
           ['Catalyst', f.catalyst],
         ].map(([k, v]) => (
           <div key={String(k)} className="flex justify-between py-1 border-b border-[#1e293b]/50 last:border-0">
@@ -200,6 +201,15 @@ export default function TickerDetail({ result }: { result: BpsResult | null }) {
             <span className="text-[10px] font-semibold text-[#22c55e]">{v}</span>
           </div>
         ))}
+        {result.rs_vs_spy != null && (
+          <div className="flex justify-between py-1 border-t border-[#1e293b]/50 mt-1">
+            <span className="text-[10px] text-[#64748b]">RS vs SPY (20d)</span>
+            <span className={`text-[10px] font-bold ${result.rs_vs_spy >= 1 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+              {result.rs_vs_spy >= 0 ? '+' : ''}{result.rs_vs_spy.toFixed(2)}x
+              {result.rs_vs_spy >= 1 ? ' ↑ outperforming' : ' ↓ underperforming'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* News sentiment for this ticker */}

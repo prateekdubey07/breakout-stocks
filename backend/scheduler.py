@@ -53,6 +53,12 @@ def setup_scheduler():
         high = [c for c in candidates if c.conviction == "HIGH"]
         if high:
             await manager.broadcast({"type": "auto_scan", "high_conviction": len(high), "top": high[0].ticker if high else None})
+            try:
+                from alerts.discord import send_high_conviction_alerts
+                import asyncio as _asyncio
+                await _asyncio.get_event_loop().run_in_executor(None, send_high_conviction_alerts, candidates)
+            except Exception as _e:
+                print(f"[DISCORD] Error: {_e}")
 
     # Mon-Fri 9:00-15:45 ET every 15 mins (covers market open at 9:30)
     try:
