@@ -1,11 +1,39 @@
+# Python
 venv/
 __pycache__/
 *.pyc
-*.db
+*.pyo
+*.pyd
 *.pkl
-.env
 *.log
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Databases
+*.db
+
+# Node
+node_modules/
+.next/
+.turbo/
+dist/
+build/
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Claude / Swarm
 .claude-flow/
 .claude/
 .superpowers/
 .swarm/
+ruvector.db

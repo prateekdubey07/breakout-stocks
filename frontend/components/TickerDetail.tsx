@@ -4,7 +4,7 @@ import type { BpsResult } from '@/lib/types'
 import PriceChart from './PriceChart'
 import { addToWatchlist, getNews } from '@/lib/api'
 
-const BASE = 'http://localhost:8000'
+const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 const IND_COLOR = (v: boolean | number | string) => {
   if (typeof v === 'boolean') return v ? 'text-[#22c55e]' : 'text-[#ef4444]'

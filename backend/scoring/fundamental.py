@@ -13,6 +13,52 @@ class FundamentalScore:
     flags: List[str] = field(default_factory=list)
 
 
+# Normalize yfinance/Alpaca/FinViz sector strings → standard GICS-like buckets
+_SECTOR_MAP = {
+    # Tech variants
+    "Electronic Technology": "Technology",
+    "Semiconductors": "Technology",
+    "Software Application": "Technology",
+    "Software Infrastructure": "Technology",
+    "Internet Content & Information": "Technology",
+    "Consumer Electronics": "Technology",
+    "Technology Services": "Technology",
+    "Information Technology": "Technology",
+    "IT Services": "Technology",
+    "Software": "Technology",
+    # Communication
+    "Interactive Media & Services": "Communication Services",
+    "Telecommunications": "Communication Services",
+    "Media": "Communication Services",
+    # Consumer
+    "Retail Trade": "Consumer Cyclical",
+    "Consumer Durables": "Consumer Cyclical",
+    "Consumer Discretionary": "Consumer Cyclical",
+    "Consumer Non-Durables": "Consumer Defensive",
+    "Consumer Staples": "Consumer Defensive",
+    # Healthcare
+    "Health Technology": "Healthcare",
+    "Health Services": "Healthcare",
+    "Health Care": "Healthcare",
+    "Biotechnology": "Healthcare",
+    "Pharmaceuticals": "Healthcare",
+    # Financial
+    "Finance": "Financial Services",
+    "Financial": "Financial Services",
+    "Financials": "Financial Services",
+    "Banks": "Financial Services",
+    "Insurance": "Financial Services",
+    # Industrials
+    "Producer Manufacturing": "Industrials",
+    "Process Industries": "Industrials",
+    "Transportation": "Industrials",
+    "Commercial Services": "Industrials",
+    # Energy / Materials
+    "Basic Materials": "Materials",
+    "Minerals": "Materials",
+}
+
+
 def compute_fundamental_score(info: dict) -> FundamentalScore:
     score = 0.0
     flags = []
@@ -24,7 +70,8 @@ def compute_fundamental_score(info: dict) -> FundamentalScore:
     forward_pe = info.get("forward_pe")
     market_cap = info.get("market_cap") or 0
     short_pct = info.get("short_pct_float") or 0
-    sector = info.get("sector") or "Unknown"
+    raw_sector = info.get("sector") or "Unknown"
+    sector = _SECTOR_MAP.get(raw_sector, raw_sector)  # normalize non-standard names
 
     # EPS growth (max 8 pts)
     if eps_g is not None:
@@ -69,11 +116,13 @@ def compute_fundamental_score(info: dict) -> FundamentalScore:
     elif short_pct < 0.07:
         score += 2
 
-    # Sector (max 3 pts)
-    if sector in ["Technology", "Consumer Cyclical", "Communication Services", "Financial Services"]:
+    # Sector (max 3 pts) — uses normalized sector (already mapped via _SECTOR_MAP above)
+    _TIER1 = {"Technology", "Communication Services", "Consumer Cyclical", "Financial Services"}
+    _TIER2 = {"Healthcare", "Industrials", "Energy"}
+    if sector in _TIER1:
         score += 3
         catalyst_parts.append(f"{sector} tailwind")
-    elif sector in ["Healthcare", "Industrials", "Energy"]:
+    elif sector in _TIER2:
         score += 2
 
     # Next earnings timing
@@ -88,6 +137,11 @@ def compute_fundamental_score(info: dict) -> FundamentalScore:
 
     eps_str = f"{eps_g*100:.0f}%" if eps_g is not None else "N/A"
     rev_str = f"{rev_g*100:.0f}%" if rev_g is not None else "N/A"
+
+    print(f"[FUND_SCORE] total={min(score, 35.0):.1f} | "
+          f"eps={eps_g}({eps_str}) rev={rev_g}({rev_str}) "
+          f"pe={forward_pe} peg={peg} mktcap={market_cap:.2e} "
+          f"short={short_pct:.4f} sector={raw_sector!r}->{sector!r}")
 
     return FundamentalScore(
         total=min(score, 35.0),

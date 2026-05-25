@@ -14,7 +14,7 @@ export default function AlertBanner({ alerts }: { alerts: WatchlistAlert[] }) {
       {alerts.slice(0, 8).map((a, i) => (
         <div key={i} className={`flex-shrink-0 flex items-center gap-2 rounded border px-2 py-1 text-[10px] font-semibold ${STATUS_STYLE[a.status] ?? 'bg-[#1e293b] text-[#94a3b8]'}`}>
           <span className="text-white font-bold">{a.ticker}</span>
-          <span>{a.status.replace('_', ' ')}</span>
+          <span>{(a.status ?? '').replace('_', ' ')}</span>
           {a.updated_bps !== undefined && <span className="opacity-70">BPS {a.updated_bps}</span>}
         </div>
       ))}

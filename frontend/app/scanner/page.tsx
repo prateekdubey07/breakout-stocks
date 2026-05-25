@@ -7,13 +7,45 @@ import BpsTable from '@/components/BpsTable'
 import TickerDetail from '@/components/TickerDetail'
 import AlertBanner from '@/components/AlertBanner'
 
-const BASE = 'http://localhost:8000'
+const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 function timeAgo(iso: string) {
-  const diff = Math.floor((Date.now() - new Date(iso + 'Z').getTime()) / 1000)
+  const s = iso.includes('Z') || iso.includes('+') ? iso : iso + 'Z'
+  const diff = Math.floor((Date.now() - new Date(s).getTime()) / 1000)
   if (diff < 60) return `${diff}s ago`
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   return `${Math.floor(diff / 3600)}h ago`
+}
+
+function scanAgeSeconds(iso: string) {
+  const s = iso.includes('Z') || iso.includes('+') ? iso : iso + 'Z'
+  return Math.floor((Date.now() - new Date(s).getTime()) / 1000)
+}
+
+function ScanSkeleton() {
+  return (
+    <div className="flex flex-col overflow-hidden h-full">
+      <div className="grid grid-cols-[56px_1fr_80px_80px_56px] px-4 py-1.5 bg-[#0a0e17] border-b border-[#1e293b]">
+        {['TICKER', 'BPS', 'PATTERN', 'STATUS', 'R:R'].map(h => (
+          <span key={h} className="text-[#64748b] text-[9px] uppercase tracking-wide">{h}</span>
+        ))}
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="grid grid-cols-[56px_1fr_80px_80px_56px] items-center px-4 py-2 border-b border-[#0f1623] animate-pulse">
+            <div className="h-3 w-10 bg-[#1e293b] rounded" />
+            <div className="flex items-center gap-2 pr-2">
+              <div className="h-3 w-6 bg-[#1e293b] rounded" />
+              <div className="flex-1 h-[3px] bg-[#1e293b] rounded-full" />
+            </div>
+            <div className="h-3 w-14 bg-[#1e293b] rounded" />
+            <div className="h-4 w-12 bg-[#1e293b] rounded" />
+            <div className="h-3 w-8 bg-[#1e293b] rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function ScannerPage() {
@@ -21,8 +53,17 @@ export default function ScannerPage() {
   const [minBps, setMinBps] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const [lastScan, setLastScan] = useState<{ scanned_at: string; trigger: string } | null>(null)
+  const [, setTick] = useState(0)
   const { results, loading, error, scan, setResults } = useScan()
   const { alerts, connected } = useWebSocket()
+
+  // Tick every 30s so stale indicator stays current without interaction
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const isStale = lastScan != null && scanAgeSeconds(lastScan.scanned_at) > 600
 
   const selectedResult = useMemo(
     () => results.find(r => r.ticker === selected) ?? null,
@@ -46,7 +87,6 @@ export default function ScannerPage() {
     ]
   }, [results, connected])
 
-  // On mount: load default tickers + restore cached scan results (no auto re-scan)
   useEffect(() => {
     fetch(`${BASE}/api/default-tickers`)
       .then(r => r.json())
@@ -64,10 +104,11 @@ export default function ScannerPage() {
       .catch(() => {})
   }, [])
 
-  function handleScan() {
+  async function handleScan() {
     const tickers = input.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
-    scan(tickers, minBps)
     setLastScan(null)
+    await scan(tickers, minBps)
+    setLastScan({ scanned_at: new Date().toISOString(), trigger: 'manual' })
   }
 
   return (
@@ -98,9 +139,20 @@ export default function ScannerPage() {
         </button>
         {error && <span className="text-[10px] text-[#ef4444]">{error}</span>}
         {lastScan && (
-          <span className="text-[10px] text-[#64748b]">
-            {lastScan.trigger === 'auto' ? '⚡ auto' : '↩ cached'} · {timeAgo(lastScan.scanned_at)}
+          <span className={`text-[10px] ${isStale ? 'text-[#ef4444]' : 'text-[#64748b]'}`}>
+            {lastScan.trigger === 'auto' ? '⚡ auto' : '↩ manual'} · {timeAgo(lastScan.scanned_at)}
+            {isStale && ' · STALE'}
           </span>
+        )}
+        {lastScan && (
+          <button
+            onClick={handleScan}
+            disabled={loading}
+            title="Force refresh"
+            className={`text-[16px] leading-none disabled:opacity-50 transition-colors ${isStale ? 'text-[#ef4444] hover:text-[#f87171]' : 'text-[#64748b] hover:text-[#3b82f6]'}`}
+          >
+            ↻
+          </button>
         )}
       </div>
 
@@ -108,7 +160,9 @@ export default function ScannerPage() {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="w-[420px] flex-shrink-0 border-r border-[#1e293b] overflow-hidden flex flex-col">
-          {results.length === 0 && !loading ? (
+          {loading ? (
+            <ScanSkeleton />
+          ) : results.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-[#4b5563] text-sm">
               Run a scan to see results
             </div>

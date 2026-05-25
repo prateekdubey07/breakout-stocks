@@ -37,33 +37,34 @@ _PATTERN_REWARD_MULT = {
 
 
 def _entry_stop_targets(
-    price: float, ma20_price: float, above_ma20: bool, pattern: str
+    price: float, atr_20: float, bps: float
 ) -> tuple[str, str, str, str, str]:
     entry_lo = round(price * 0.998, 2)
     entry_hi = round(price * 1.002, 2)
 
-    # Stop at MA20 (unique per ticker) — gives variable risk distance
-    if above_ma20 and ma20_price > 0 and ma20_price < price:
-        stop = round(ma20_price * 0.995, 2)
+    atr = atr_20 if atr_20 > 0 else price * 0.02
+
+    # Conviction-based multipliers → unique R:R per tier and ATR-unique dollar levels
+    if bps >= 75:
+        stop_mult, t1_mult, t2_mult = 1.2, 3.0, 6.0   # HIGH:   2.5:1 base
+    elif bps >= 60:
+        stop_mult, t1_mult, t2_mult = 1.5, 2.5, 5.0   # MEDIUM: 1.67:1 base
+    elif bps >= 45:
+        stop_mult, t1_mult, t2_mult = 2.0, 2.0, 4.0   # WATCH:  1.0:1 base
     else:
-        stop = round(price * 0.94, 2)
+        stop_mult, t1_mult, t2_mult = 2.0, 1.5, 3.0   # PASS:   0.75:1 base
 
-    # Enforce minimum 3% below entry
-    max_stop = round(price * 0.97, 2)
-    if stop > max_stop:
-        stop = max_stop
-
+    stop = round(price - stop_mult * atr, 2)
+    stop = max(stop, round(price * 0.90, 2))  # floor at 10% max loss
     risk = price - stop
     if risk <= 0:
-        risk = price * 0.04
+        risk = price * 0.02
 
-    # Pattern-specific reward multiplier → unique R:R per ticker
-    reward_mult = _PATTERN_REWARD_MULT.get(pattern, 2.0)
-    t1 = round(price + risk * reward_mult, 2)
-    t2 = round(price + risk * reward_mult * 2, 2)
-    rr = f"{reward_mult}:1"
+    t1 = round(price + t1_mult * atr, 2)
+    t2 = round(price + t2_mult * atr, 2)
+    rr = round((t1 - price) / risk, 2)
 
-    return f"${entry_lo}-${entry_hi}", f"${stop}", f"${t1}", f"${t2}", rr
+    return f"${entry_lo}-${entry_hi}", f"${stop}", f"${t1}", f"${t2}", f"{rr}:1"
 
 
 def score_ticker(ticker: str) -> BpsResult:
@@ -95,10 +96,18 @@ def score_ticker(ticker: str) -> BpsResult:
     total = max(total, 0.0)
 
     price = float(df["Close"].iloc[-1])
-    entry, stop, t1, t2, rr = _entry_stop_targets(
-        price, tech.ma20_price, tech.above_20ma, tech.pattern
-    )
+    entry, stop, t1, t2, rr = _entry_stop_targets(price, tech.atr_20, total)
 
+    # Per-component technical breakdown for diagnosis
+    _vol_pts  = 10 if tech.volume_ratio > 2.0 else 6 if tech.volume_ratio >= 1.5 else 3 if tech.volume_ratio >= 1.2 else 0
+    _high_pts = 8 if tech.pct_from_52w_high >= -3.0 else 4 if tech.pct_from_52w_high >= -8.0 else 0
+    _coil_pts = 7 if tech.volatility_contracting else 0
+    _rsi_pts  = 8 if 55 <= tech.rsi_14 <= 75 else 4 if 50 <= tech.rsi_14 < 55 else 3 if 75 < tech.rsi_14 <= 80 else 0
+    _macd_pts = 7 if tech.macd_bullish else (4 if "rising" in tech.macd_signal else 0)
+    _ma_pts   = 5 if tech.above_key_mas else (3 if tech.above_20ma and tech.above_50ma else (1 if tech.above_20ma else 0))
+    print(f"[TECH_SCORE] {ticker}: vol={_vol_pts} 52h={_high_pts} coil={_coil_pts} "
+          f"rsi={_rsi_pts} macd={_macd_pts} ma={_ma_pts} -> subtotal={tech.total} "
+          f"pattern={tech.pattern}({tech.pattern_score}pts) atr={tech.atr_20}")
     print(f"[DEBUG] {ticker}: bps={total:.1f} tech={tech.total} fund={fund.total} "
           f"pattern={tech.pattern}({pattern_pts}pts) ml={ml_prob:.0%} rr={rr} "
           f"eps={fund.eps_growth_yoy} rev={fund.revenue_growth_yoy} vol={tech.volume_ratio}")

@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
@@ -9,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import init_db, get_conn
 from models import ScanRequest, BpsResult, BacktestRequest
 from scoring.bps_engine import score_ticker
-from data.fetcher import fetch_ohlcv
+from data.fetcher import fetch_ohlcv, prefetch_ohlcv_batch
 from backtest.extractor import extract_signals
 from backtest.analyst import evaluate_signals
 from websocket.manager import manager
@@ -33,9 +34,12 @@ app = FastAPI(title="BreakoutStocks API", lifespan=lifespan)
 
 executor = ThreadPoolExecutor(max_workers=8)
 
+import os as _os
+_CORS_ORIGINS = [o.strip() for o in _os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -58,15 +62,33 @@ def _save_scan_results(tickers: list, candidates: list, trigger: str = "manual")
     conn.close()
 
 
+async def _score_timeout(loop, executor, ticker: str, timeout: float = 12.0):
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(executor, score_ticker, ticker),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        print(f"[TIMEOUT] {ticker} skipped after {timeout:.0f}s")
+        return None
+    except Exception as exc:
+        print(f"[ERROR] {ticker}: {exc}")
+        return None
+
+
 @app.post("/api/scan")
 async def scan(req: ScanRequest):
-    import asyncio
     loop = asyncio.get_event_loop()
+    # ONE Alpaca call fetches all tickers' OHLCV — drops 100 per-ticker calls to 1
+    await loop.run_in_executor(executor, prefetch_ohlcv_batch, req.tickers, "2y")
     results = await asyncio.gather(*[
-        loop.run_in_executor(executor, score_ticker, t)
+        _score_timeout(loop, executor, t)
         for t in req.tickers
     ])
-    candidates = [r for r in results if r.breakout_probability_score >= req.min_bps]
+    candidates = [
+        r for r in results
+        if r is not None and r.breakout_probability_score >= req.min_bps
+    ]
     candidates.sort(key=lambda x: x.breakout_probability_score, reverse=True)
     _save_scan_results(req.tickers, candidates, trigger="manual")
     return {"candidates": candidates}

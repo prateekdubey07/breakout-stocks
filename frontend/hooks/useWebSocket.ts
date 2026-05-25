@@ -9,7 +9,9 @@ export function useWebSocket() {
 
   useEffect(() => {
     function connect() {
-      const socket = new WebSocket('ws://localhost:8000/ws/alerts')
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const wsUrl = apiUrl.replace(/^https/, 'wss').replace(/^http/, 'ws') + '/ws/alerts'
+      const socket = new WebSocket(wsUrl)
       ws.current = socket
 
       socket.onopen = () => setConnected(true)

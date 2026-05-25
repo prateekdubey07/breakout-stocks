@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { getDefaultTickers } from '@/lib/api'
 import TickerCombobox from '@/components/TickerCombobox'
 
-const BASE = 'http://localhost:8000'
+const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 interface Trade {
   id: number; ticker: string; entry_price: number; shares: number

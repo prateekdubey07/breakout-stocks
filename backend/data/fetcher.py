@@ -9,12 +9,17 @@ import yfinance as yf
 from database import get_conn
 
 _OHLCV_COLS = ["Open", "High", "Low", "Close", "Volume"]
-_CACHE_TTL_HOURS = 4
-_CACHE_TTL_MARKET_HOURS = 1   # good fundamentals during market hours
-_CACHE_TTL_NULL_MINUTES = 15  # null/failed fundamentals — retry sooner
+_CACHE_TTL_HOURS = 24          # fundamentals don't change intraday — 24h off-hours
+_CACHE_TTL_MARKET_HOURS = 4   # still refresh every 4h during market hours
+_CACHE_TTL_NULL_MINUTES = 60  # null/failed fundamentals — wait 1h before retry (avoids 429 loop)
 
-# Limit concurrent yfinance calls — prevents 429 when scanning 100 tickers in parallel
-_YF_SEMAPHORE = threading.Semaphore(2)
+# Limit concurrent yfinance calls — MUST stay low; yfinance bans IPs with >3-4 concurrent
+_YF_SEMAPHORE = threading.Semaphore(3)
+
+# ---------------------------------------------------------------------------
+# OHLCV batch prefetch cache — populated once per scan, read per ticker
+# ---------------------------------------------------------------------------
+_OHLCV_BATCH_CACHE: dict = {}  # {TICKER: pd.DataFrame}
 
 
 def _is_market_hours() -> bool:
@@ -57,9 +62,62 @@ def _period_to_start(period: str) -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# OHLCV fetch — Alpaca primary, yfinance fallback
+# OHLCV batch prefetch — ONE Alpaca call for all tickers in a scan
+# ---------------------------------------------------------------------------
+def prefetch_ohlcv_batch(tickers: list, period: str = "2y") -> None:
+    """Fetch OHLCV for all tickers in a single Alpaca request.
+    Clears and repopulates _OHLCV_BATCH_CACHE. No-op if Alpaca unavailable."""
+    global _OHLCV_BATCH_CACHE
+    _OHLCV_BATCH_CACHE.clear()
+    client = _get_alpaca()
+    if not client:
+        return
+    try:
+        from alpaca.data.requests import StockBarsRequest
+        from alpaca.data.timeframe import TimeFrame
+        # Alpaca rejects symbols with special chars (BRK-B, BF-B, BRK.B) — filter them out;
+        # they'll fall through to per-ticker yfinance fallback in fetch_ohlcv.
+        alpaca_tickers = [t.upper() for t in tickers if t.replace("-", "").replace(".", "").isalnum() and "-" not in t and "." not in t]
+        if not alpaca_tickers:
+            return
+        req = StockBarsRequest(
+            symbol_or_symbols=alpaca_tickers,
+            timeframe=TimeFrame.Day,
+            start=_period_to_start(period),
+            end=datetime.now(tz=timezone.utc),
+            feed="iex",
+        )
+        df_all = client.get_stock_bars(req).df
+        if df_all is None or df_all.empty:
+            print("[PREFETCH] Alpaca returned empty DataFrame")
+            return
+        # MultiIndex: (symbol, timestamp) — split per symbol
+        for symbol in df_all.index.get_level_values(0).unique():
+            df = df_all.loc[symbol].copy()
+            df.index = pd.to_datetime(df.index).tz_localize(None)
+            df = df.rename(columns={
+                "open": "Open", "high": "High", "low": "Low",
+                "close": "Close", "volume": "Volume",
+            })
+            existing = [c for c in _OHLCV_COLS if c in df.columns]
+            df = df[existing].dropna()
+            if len(df) > 10:
+                _OHLCV_BATCH_CACHE[symbol.upper()] = df
+        skipped = len(tickers) - len(alpaca_tickers)
+        print(f"[PREFETCH] Loaded {len(_OHLCV_BATCH_CACHE)}/{len(alpaca_tickers)} tickers from Alpaca ({skipped} skipped — special chars)")
+    except Exception as e:
+        print(f"[PREFETCH] Batch fetch failed ({e}) — tickers will use per-ticker fallback")
+
+
+# ---------------------------------------------------------------------------
+# OHLCV fetch — checks batch cache first, then Alpaca single, then yfinance
 # ---------------------------------------------------------------------------
 def fetch_ohlcv(ticker: str, period: str = "6mo") -> pd.DataFrame:
+    # Batch cache hit — avoids per-ticker Alpaca calls during scans
+    cached = _OHLCV_BATCH_CACHE.get(ticker.upper())
+    if cached is not None and len(cached) > 10:
+        return cached
+
     client = _get_alpaca()
     if client:
         try:
@@ -88,8 +146,10 @@ def fetch_ohlcv(ticker: str, period: str = "6mo") -> pd.DataFrame:
         except Exception:
             pass  # fall through to yfinance
 
-    # yfinance fallback
-    df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
+    # yfinance fallback — gated by semaphore to prevent concurrent download flood
+    with _YF_SEMAPHORE:
+        time.sleep(0.5)
+        df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(1)
     else:
@@ -192,9 +252,9 @@ def fetch_fundamentals(ticker: str) -> dict:
 
     result = None
 
-    # Semaphore: max 2 concurrent yfinance calls across all threads
+    # Semaphore: 3 concurrent max — yfinance bans IPs beyond this threshold
     with _YF_SEMAPHORE:
-        time.sleep(0.3)  # polite delay between yfinance requests
+        time.sleep(1.0)  # 1s between releases prevents rapid-fire 429s
 
         # Primary: t.info (full fundamentals, but can 429)
         try:

@@ -1,12 +1,22 @@
-const BASE = 'http://localhost:8000'
+const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-export async function scanTickers(tickers: string[], minBps = 65) {
-  const res = await fetch(`${BASE}/api/scan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tickers, min_bps: minBps }),
-  })
-  return res.json()
+export async function scanTickers(tickers: string[], minBps = 0) {
+  const BATCH = 20
+  const all: any[] = []
+  for (let i = 0; i < tickers.length; i += BATCH) {
+    const batch = tickers.slice(i, i + BATCH)
+    const res = await fetch(`${BASE}/api/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tickers: batch, min_bps: minBps }),
+    })
+    const data = await res.json()
+    const candidates = Array.isArray(data) ? data : (data.candidates ?? [])
+    all.push(...candidates)
+  }
+  return {
+    candidates: all.sort((a, b) => b.breakout_probability_score - a.breakout_probability_score),
+  }
 }
 
 export async function analyzeTicker(ticker: string) {
