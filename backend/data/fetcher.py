@@ -8,6 +8,17 @@ from database import get_conn
 
 _OHLCV_COLS = ["Open", "High", "Low", "Close", "Volume"]
 _CACHE_TTL_HOURS = 4
+_CACHE_TTL_MARKET_HOURS = 1  # shorter TTL during live market
+
+
+def _is_market_hours() -> bool:
+    try:
+        import pytz
+        et = pytz.timezone("America/New_York")
+        now = datetime.now(et)
+        return now.weekday() < 5 and 9 <= now.hour < 16
+    except Exception:
+        return False
 
 # ---------------------------------------------------------------------------
 # Alpaca client (lazy-init)
@@ -93,11 +104,12 @@ _EMPTY_FUNDAMENTALS = {
 
 def _cache_get(ticker: str) -> dict | None:
     try:
+        ttl = _CACHE_TTL_MARKET_HOURS if _is_market_hours() else _CACHE_TTL_HOURS
         conn = get_conn()
         row = conn.execute(
             "SELECT data_json FROM fundamentals_cache "
             "WHERE ticker=? AND cached_at > datetime('now', ? || ' hours')",
-            (ticker, f"-{_CACHE_TTL_HOURS}")
+            (ticker, f"-{ttl}")
         ).fetchone()
         conn.close()
         return json.loads(row["data_json"]) if row else None
@@ -154,8 +166,7 @@ def fetch_fundamentals(ticker: str) -> dict:
     except Exception:
         result = {**_EMPTY_FUNDAMENTALS, "avg_volume": fast["avg_volume"], "market_cap": fast["market_cap"]}
 
-    if result.get("eps_growth_yoy") is not None or result.get("sector", "Unknown") != "Unknown":
-        _cache_set(ticker, result)
+    _cache_set(ticker, result)  # always cache — prevents repeated yfinance hammering on null data
 
     return result
 

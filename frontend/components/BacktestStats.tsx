@@ -19,6 +19,14 @@ export default function BacktestStats({ summary }: { summary: BacktestSummary })
   const s = summary
   const isProfit = (s.total_pnl_usd ?? 0) >= 0
 
+  if ((s as any).error || s.total_signals === 0) {
+    return (
+      <div className="flex items-center justify-center h-40 text-[#64748b] text-sm">
+        {(s as any).error ?? 'No signals found for this ticker and date range.'}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Capital summary — hero row */}
@@ -56,19 +64,37 @@ export default function BacktestStats({ summary }: { summary: BacktestSummary })
       {/* Trade stats */}
       <div className="grid grid-cols-4 gap-2">
         <Stat label="Total Signals" value={s.total_signals} />
-        <Stat label="Win Rate" value={`${(s.win_rate_t1 * 100).toFixed(1)}%`} color={s.win_rate_t1 >= 0.5 ? 'text-[#22c55e]' : 'text-[#ef4444]'} />
-        <Stat label="Stop Rate" value={`${(s.stop_out_rate * 100).toFixed(1)}%`} color="text-[#ef4444]" />
-        <Stat label="Avg Days Held" value={s.avg_days_to_resolution.toFixed(1)} />
+        {s.win_rate_t1 != null && (
+          <Stat label="Win Rate" value={`${(s.win_rate_t1 * 100).toFixed(1)}%`} color={s.win_rate_t1 >= 0.5 ? 'text-[#22c55e]' : 'text-[#ef4444]'} />
+        )}
+        {s.stop_out_rate != null && (
+          <Stat label="Stop Rate" value={`${(s.stop_out_rate * 100).toFixed(1)}%`} color="text-[#ef4444]" />
+        )}
+        {s.avg_days_to_resolution != null && (
+          <Stat label="Avg Days Held" value={s.avg_days_to_resolution.toFixed(1)} />
+        )}
       </div>
       <div className="grid grid-cols-4 gap-2">
-        <Stat label="Avg Win" value={`${s.avg_return_winners_pct.toFixed(1)}%`} color="text-[#22c55e]" />
-        <Stat label="Avg Loss" value={`${s.avg_return_losers_pct.toFixed(1)}%`} color="text-[#ef4444]" />
-        <Stat label="Expectancy" value={`${s.expectancy_per_trade_pct.toFixed(2)}%`} color={s.expectancy_per_trade_pct >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'} />
-        <Stat label="Profit Factor" value={s.profit_factor.toFixed(2)} color={s.profit_factor >= 1.5 ? 'text-[#22c55e]' : 'text-[#f59e0b]'} />
+        {s.avg_return_winners_pct != null && (
+          <Stat label="Avg Win" value={`${s.avg_return_winners_pct.toFixed(1)}%`} color="text-[#22c55e]" />
+        )}
+        {s.avg_return_losers_pct != null && (
+          <Stat label="Avg Loss" value={`${s.avg_return_losers_pct.toFixed(1)}%`} color="text-[#ef4444]" />
+        )}
+        {s.expectancy_per_trade_pct != null && (
+          <Stat label="Expectancy" value={`${s.expectancy_per_trade_pct.toFixed(2)}%`} color={s.expectancy_per_trade_pct >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'} />
+        )}
+        {s.profit_factor != null && (
+          <Stat label="Profit Factor" value={s.profit_factor.toFixed(2)} color={s.profit_factor >= 1.5 ? 'text-[#22c55e]' : 'text-[#f59e0b]'} />
+        )}
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Stat label="Sharpe Ratio" value={s.sharpe_ratio.toFixed(2)} color={s.sharpe_ratio >= 1 ? 'text-[#22c55e]' : 'text-[#f59e0b]'} />
-        <Stat label="Max Drawdown" value={`${s.max_drawdown_pct.toFixed(1)}%`} color="text-[#ef4444]" />
+        {s.sharpe_ratio != null && (
+          <Stat label="Sharpe Ratio" value={s.sharpe_ratio.toFixed(2)} color={s.sharpe_ratio >= 1 ? 'text-[#22c55e]' : 'text-[#f59e0b]'} />
+        )}
+        {s.max_drawdown_pct != null && (
+          <Stat label="Max Drawdown" value={`${s.max_drawdown_pct.toFixed(1)}%`} color="text-[#ef4444]" />
+        )}
       </div>
 
       {/* Signal log */}

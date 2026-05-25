@@ -12,29 +12,65 @@ def _safe_float(v: float, default: float = 0.0) -> float:
 
 
 def _conviction(bps: float) -> str:
-    if bps >= 80:
+    if bps >= 75:
         return "HIGH"
-    if bps >= 65:
+    if bps >= 60:
         return "MEDIUM"
-    if bps >= 50:
+    if bps >= 45:
         return "WATCH"
     return "PASS"
 
 
-def _entry_stop_targets(price: float, atr: float) -> tuple[str, str, str, str, str]:
-    entry_lo = round(price * 0.995, 2)
-    entry_hi = round(price * 1.005, 2)
-    stop = round(price - 1.5 * atr, 2)
-    t1 = round(price + 2.5 * atr, 2)
-    t2 = round(price + 5.0 * atr, 2)
+_PATTERN_REWARD_MULT = {
+    "Bull Flag": 3.0,
+    "Volatility Squeeze": 2.5,
+    "Breakout Retest": 2.5,
+    "Cup & Handle": 2.5,
+    "Ascending Triangle": 2.5,
+    "VCP": 3.0,
+    "Rising Base": 2.0,
+    "Flat Base": 2.0,
+    "Range Bound": 1.5,
+    "No Clear Pattern": 2.0,
+    "Downtrend": 1.5,
+}
+
+
+def _entry_stop_targets(
+    price: float, ma20_price: float, above_ma20: bool, pattern: str
+) -> tuple[str, str, str, str, str]:
+    entry_lo = round(price * 0.998, 2)
+    entry_hi = round(price * 1.002, 2)
+
+    # Stop at MA20 (unique per ticker) — gives variable risk distance
+    if above_ma20 and ma20_price > 0 and ma20_price < price:
+        stop = round(ma20_price * 0.995, 2)
+    else:
+        stop = round(price * 0.94, 2)
+
+    # Enforce minimum 3% below entry
+    max_stop = round(price * 0.97, 2)
+    if stop > max_stop:
+        stop = max_stop
+
     risk = price - stop
-    reward = t1 - price
-    rr = f"{round(reward/risk, 1)}:1" if risk > 0 else "N/A"
+    if risk <= 0:
+        risk = price * 0.04
+
+    # Pattern-specific reward multiplier → unique R:R per ticker
+    reward_mult = _PATTERN_REWARD_MULT.get(pattern, 2.0)
+    t1 = round(price + risk * reward_mult, 2)
+    t2 = round(price + risk * reward_mult * 2, 2)
+    rr = f"{reward_mult}:1"
+
     return f"${entry_lo}-${entry_hi}", f"${stop}", f"${t1}", f"${t2}", rr
 
 
 def score_ticker(ticker: str) -> BpsResult:
     df = fetch_ohlcv(ticker, period="2y")
+    if df is None or df.empty or len(df) < 50:
+        return _zero_result(ticker, ["INSUFFICIENT_DATA"])
+
     info = fetch_fundamentals(ticker)
 
     tech = compute_technical_score(df)
@@ -45,14 +81,27 @@ def score_ticker(ticker: str) -> BpsResult:
         return _zero_result(ticker, risk_flags)
 
     ml_prob = predict_breakout_prob(df, sector=info.get("sector", "Unknown"))
-    # ML maps to 0-20 pts (pattern recognition slot)
-    ml_pts = round(ml_prob * 20, 1)
 
-    total = min(tech.total + fund.total + ml_pts - penalty, 100.0)
+    # Pattern recognition (20 pts): rule-based + small ML boost when model trained
+    pattern_pts = min(tech.pattern_score + round(ml_prob * 5, 1), 20.0)
+
+    # Risk filter: overbought or far from highs
+    if tech.rsi_14 > 80:
+        penalty += 15
+    if tech.pct_from_52w_high < -30:
+        penalty += 15
+
+    total = min(tech.total + fund.total + pattern_pts - penalty, 100.0)
     total = max(total, 0.0)
 
     price = float(df["Close"].iloc[-1])
-    entry, stop, t1, t2, rr = _entry_stop_targets(price, tech.atr_20)
+    entry, stop, t1, t2, rr = _entry_stop_targets(
+        price, tech.ma20_price, tech.above_20ma, tech.pattern
+    )
+
+    print(f"[DEBUG] {ticker}: bps={total:.1f} tech={tech.total} fund={fund.total} "
+          f"pattern={tech.pattern}({pattern_pts}pts) ml={ml_prob:.0%} rr={rr} "
+          f"eps={fund.eps_growth_yoy} rev={fund.revenue_growth_yoy} vol={tech.volume_ratio}")
 
     return BpsResult(
         ticker=ticker.upper(),
@@ -61,7 +110,7 @@ def score_ticker(ticker: str) -> BpsResult:
         technical_score=round(tech.total, 1),
         fundamental_score=round(fund.total, 1),
         signal_summary=SignalSummary(
-            pattern=f"ML prob {ml_prob:.0%}",
+            pattern=tech.pattern,
             volume_surge=tech.volume_surge,
             volume_ratio=round(_safe_float(tech.volume_ratio), 2),
             above_key_mas=tech.above_key_mas,
