@@ -5,6 +5,7 @@ export interface SignalSummary {
   above_key_mas: boolean
   rsi_14: number
   macd_signal: string
+  macd_histogram: number | null
   volatility_contracting: boolean
   pct_from_52w_high: number
   ml_breakout_prob: number

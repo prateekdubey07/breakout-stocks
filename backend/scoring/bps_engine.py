@@ -44,15 +44,13 @@ def _entry_stop_targets(
 
     atr = atr_20 if atr_20 > 0 else price * 0.02
 
-    # Conviction-based multipliers → unique R:R per tier and ATR-unique dollar levels
-    if bps >= 75:
-        stop_mult, t1_mult, t2_mult = 1.2, 3.0, 6.0   # HIGH:   2.5:1 base
-    elif bps >= 60:
-        stop_mult, t1_mult, t2_mult = 1.5, 2.5, 5.0   # MEDIUM: 1.67:1 base
-    elif bps >= 45:
-        stop_mult, t1_mult, t2_mult = 2.0, 2.0, 4.0   # WATCH:  1.0:1 base
-    else:
-        stop_mult, t1_mult, t2_mult = 2.0, 1.5, 3.0   # PASS:   0.75:1 base
+    # BPS-continuous multipliers — both scale with score so R:R varies per ticker
+    # stop_mult: 2.0 (bps=0) → 1.0 (bps=100) — tighter stop for stronger setups
+    # t1_mult:   2.0 (bps=0) → 3.0 (bps=100) — higher target for stronger setups
+    # t2_mult:   t1_mult * 2 — fixed 2× extension
+    stop_mult = round(1.0 + ((100 - bps) / 100), 4)   # 1.0–2.0
+    t1_mult   = round(2.0 + (bps / 100), 4)            # 2.0–3.0
+    t2_mult   = round(t1_mult * 2, 4)
 
     stop = round(price - stop_mult * atr, 2)
     stop = max(stop, round(price * 0.90, 2))  # floor at 10% max loss
@@ -125,6 +123,7 @@ def score_ticker(ticker: str) -> BpsResult:
             above_key_mas=tech.above_key_mas,
             rsi_14=round(_safe_float(tech.rsi_14), 1),
             macd_signal=tech.macd_signal,
+            macd_histogram=round(_safe_float(tech.macd_histogram), 4),
             volatility_contracting=tech.volatility_contracting,
             pct_from_52w_high=round(_safe_float(tech.pct_from_52w_high), 2),
             ml_breakout_prob=round(_safe_float(ml_prob), 4),
@@ -159,6 +158,7 @@ def _zero_result(ticker: str, flags: list) -> BpsResult:
             above_key_mas=False,
             rsi_14=0,
             macd_signal="N/A",
+            macd_histogram=0.0,
             volatility_contracting=False,
             pct_from_52w_high=0,
             ml_breakout_prob=0,

@@ -149,16 +149,24 @@ export default function TickerDetail({ result }: { result: BpsResult | null }) {
         {[
           { label: 'RSI 14', value: s.rsi_14 },
           { label: 'Vol Ratio', value: `${s.volume_ratio}x` },
-          { label: 'MACD', value: s.macd_signal.split(' ')[0] },
+          {
+            label: 'MACD Hist',
+            value: s.macd_histogram != null
+              ? (s.macd_histogram >= 0 ? `+${s.macd_histogram.toFixed(2)}` : s.macd_histogram.toFixed(2))
+              : 'N/A',
+            _color: s.macd_histogram != null
+              ? (s.macd_histogram > 0 ? 'text-[#22c55e]' : s.macd_histogram < 0 ? 'text-[#ef4444]' : 'text-[#64748b]')
+              : 'text-[#64748b]',
+          },
           { label: '52W High', value: `${s.pct_from_52w_high}%` },
           { label: 'Above MAs', value: s.above_key_mas },
           { label: 'Vol Surge', value: s.volume_surge },
           { label: 'ATR Coil', value: s.volatility_contracting },
           { label: 'ML Prob', value: `${(s.ml_breakout_prob * 100).toFixed(0)}%` },
-        ].map(({ label, value }) => (
+        ].map(({ label, value, _color }: { label: string; value: any; _color?: string }) => (
           <div key={label} className="bg-[#0a0e17] rounded p-1.5 text-center">
             <div className="text-[8px] text-[#64748b] uppercase mb-0.5">{label}</div>
-            <div className={`text-[11px] font-bold ${IND_COLOR(value)}`}>
+            <div className={`text-[11px] font-bold ${_color ?? IND_COLOR(value)}`}>
               {typeof value === 'boolean' ? (value ? '✓' : '✗') : value}
             </div>
           </div>

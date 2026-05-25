@@ -8,6 +8,7 @@ class SignalSummary(BaseModel):
     above_key_mas: bool
     rsi_14: float
     macd_signal: str
+    macd_histogram: Optional[float] = None
     volatility_contracting: bool
     pct_from_52w_high: float
     ml_breakout_prob: float

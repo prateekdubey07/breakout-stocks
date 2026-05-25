@@ -73,8 +73,9 @@ export default function ScannerPage() {
   const kpis = useMemo(() => {
     const high = results.filter(r => r.conviction === 'HIGH').length
     const med  = results.filter(r => r.conviction === 'MEDIUM').length
-    const avgBps = results.length
-      ? Math.round(results.reduce((s, r) => s + r.breakout_probability_score, 0) / results.length)
+    const scoredResults = results.filter(r => r.breakout_probability_score > 0)
+    const avgBps = scoredResults.length
+      ? Math.round(scoredResults.reduce((s, r) => s + r.breakout_probability_score, 0) / scoredResults.length)
       : 0
     const topBps = results.length ? Math.max(...results.map(r => r.breakout_probability_score)) : 0
     return [

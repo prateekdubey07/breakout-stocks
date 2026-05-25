@@ -16,6 +16,7 @@ class TechnicalScore:
     rsi_14: float
     macd_bullish: bool
     macd_signal: str
+    macd_histogram: float
     above_20ma: bool
     above_50ma: bool
     above_200ma: bool
@@ -126,8 +127,10 @@ def compute_technical_score(df: pd.DataFrame) -> TechnicalScore:
     macd_bullish = False
     macd_signal_str = "neutral"
     macd_score = 0
+    macd_hist_val = 0.0
     if macd_df is not None and not macd_df.empty:
         hist = macd_df.iloc[:, 1]
+        macd_hist_val = round(float(hist.iloc[-1]), 4)
         macd_bullish = hist.iloc[-1] > 0 and hist.iloc[-2] <= 0
         if macd_bullish:
             macd_signal_str = "bullish crossover"
@@ -179,6 +182,7 @@ def compute_technical_score(df: pd.DataFrame) -> TechnicalScore:
         rsi_14=rsi_val,
         macd_bullish=macd_bullish,
         macd_signal=macd_signal_str,
+        macd_histogram=macd_hist_val,
         above_20ma=above_20,
         above_50ma=above_50,
         above_200ma=above_200,
