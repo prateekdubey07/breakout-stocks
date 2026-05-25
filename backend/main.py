@@ -265,3 +265,37 @@ def delete_paper_trade(trade_id: int):
 async def upload_csv(ticker: str, file: UploadFile = File(...)):
     contents = await file.read()
     return process_csv_upload(contents, ticker)
+
+
+@app.get("/debug/{ticker}")
+async def debug_ticker(ticker: str):
+    import asyncio
+    from data.fetcher import fetch_fundamentals
+    from scoring.technical import compute_technical_score
+    loop = asyncio.get_event_loop()
+    df = await loop.run_in_executor(executor, fetch_ohlcv, ticker.upper(), "2y")
+    info = await loop.run_in_executor(executor, fetch_fundamentals, ticker.upper())
+    if df.empty or len(df) < 50:
+        return {"error": "insufficient OHLCV data", "rows": len(df)}
+    tech = compute_technical_score(df)
+    return {
+        "ticker": ticker.upper(),
+        "ohlcv_rows": len(df),
+        "last_close": round(float(df["Close"].iloc[-1]), 2),
+        "fundamentals": info,
+        "technical": {
+            "volume_ratio": tech.volume_ratio,
+            "rsi_14": tech.rsi_14,
+            "macd_bullish": tech.macd_bullish,
+            "macd_signal": tech.macd_signal,
+            "pct_from_52w_high": tech.pct_from_52w_high,
+            "volatility_contracting": tech.volatility_contracting,
+            "above_20ma": tech.above_20ma,
+            "above_50ma": tech.above_50ma,
+            "above_200ma": tech.above_200ma,
+            "ma20_price": tech.ma20_price,
+            "pattern": tech.pattern,
+            "pattern_score": tech.pattern_score,
+            "technical_score": tech.total,
+        },
+    }

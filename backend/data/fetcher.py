@@ -1,5 +1,7 @@
 import json
 import os
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -8,7 +10,11 @@ from database import get_conn
 
 _OHLCV_COLS = ["Open", "High", "Low", "Close", "Volume"]
 _CACHE_TTL_HOURS = 4
-_CACHE_TTL_MARKET_HOURS = 1  # shorter TTL during live market
+_CACHE_TTL_MARKET_HOURS = 1   # good fundamentals during market hours
+_CACHE_TTL_NULL_MINUTES = 15  # null/failed fundamentals — retry sooner
+
+# Limit concurrent yfinance calls — prevents 429 when scanning 100 tickers in parallel
+_YF_SEMAPHORE = threading.Semaphore(2)
 
 
 def _is_market_hours() -> bool:
@@ -117,6 +123,15 @@ def _cache_get(ticker: str) -> dict | None:
         return None
 
 
+def _has_useful_data(data: dict) -> bool:
+    return any([
+        data.get("eps_growth_yoy") is not None,
+        data.get("revenue_growth_yoy") is not None,
+        data.get("market_cap") and data["market_cap"] > 0,
+        data.get("sector") not in (None, "Unknown"),
+    ])
+
+
 def _cache_set(ticker: str, data: dict) -> None:
     try:
         conn = get_conn()
@@ -131,13 +146,40 @@ def _cache_set(ticker: str, data: dict) -> None:
         pass
 
 
+def _cache_get_null_aware(ticker: str) -> dict | None:
+    """Returns cached result only if within TTL — shorter TTL for null/empty results."""
+    try:
+        ttl_hours = _CACHE_TTL_MARKET_HOURS if _is_market_hours() else _CACHE_TTL_HOURS
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT data_json, cached_at FROM fundamentals_cache WHERE ticker=?",
+            (ticker,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            return None
+        data = json.loads(row["data_json"])
+        # Parse cached_at and compute age
+        try:
+            from datetime import datetime as dt
+            cached_at = dt.fromisoformat(row["cached_at"])
+            age_minutes = (dt.utcnow() - cached_at).total_seconds() / 60
+        except Exception:
+            return None
+        max_age = ttl_hours * 60 if _has_useful_data(data) else _CACHE_TTL_NULL_MINUTES
+        return data if age_minutes < max_age else None
+    except Exception:
+        return None
+
+
 def fetch_fundamentals(ticker: str) -> dict:
-    cached = _cache_get(ticker)
+    cached = _cache_get_null_aware(ticker)
     if cached:
         return cached
 
     t = yf.Ticker(ticker)
 
+    # fast_info: different endpoint, never 429 — always yields market_cap + avg_volume
     fast = {"avg_volume": 1_000_000, "market_cap": None}
     try:
         fi = t.fast_info
@@ -148,26 +190,61 @@ def fetch_fundamentals(ticker: str) -> dict:
     except Exception:
         pass
 
-    try:
-        info = t.info
-        if not isinstance(info, dict) or info.get("quoteType") is None:
-            raise ValueError("empty info")
-        result = {
-            "eps_growth_yoy": _safe(info, "earningsGrowth"),
-            "revenue_growth_yoy": _safe(info, "revenueGrowth"),
-            "peg_ratio": _safe(info, "pegRatio"),
-            "market_cap": _safe(info, "marketCap") or fast["market_cap"],
-            "avg_volume": _safe(info, "averageVolume") or fast["avg_volume"],
-            "short_pct_float": _safe(info, "shortPercentOfFloat") or 0.0,
-            "forward_pe": _safe(info, "forwardPE"),
-            "sector": _safe(info, "sector", "Unknown"),
-            "next_earnings": _safe(info, "earningsTimestamp"),
-        }
-    except Exception:
-        result = {**_EMPTY_FUNDAMENTALS, "avg_volume": fast["avg_volume"], "market_cap": fast["market_cap"]}
+    result = None
 
-    _cache_set(ticker, result)  # always cache — prevents repeated yfinance hammering on null data
+    # Semaphore: max 2 concurrent yfinance calls across all threads
+    with _YF_SEMAPHORE:
+        time.sleep(0.3)  # polite delay between yfinance requests
 
+        # Primary: t.info (full fundamentals, but can 429)
+        try:
+            info = t.info
+            if isinstance(info, dict) and info.get("quoteType") is not None:
+                result = {
+                    "eps_growth_yoy": _safe(info, "earningsGrowth"),
+                    "revenue_growth_yoy": _safe(info, "revenueGrowth"),
+                    "peg_ratio": _safe(info, "pegRatio"),
+                    "market_cap": _safe(info, "marketCap") or fast["market_cap"],
+                    "avg_volume": _safe(info, "averageVolume") or fast["avg_volume"],
+                    "short_pct_float": _safe(info, "shortPercentOfFloat") or 0.0,
+                    "forward_pe": _safe(info, "forwardPE"),
+                    "sector": _safe(info, "sector", "Unknown"),
+                    "next_earnings": _safe(info, "earningsTimestamp"),
+                }
+        except Exception:
+            pass
+
+        # Fallback: income_stmt (different endpoint — often works when .info 429s)
+        if result is None:
+            result = {**_EMPTY_FUNDAMENTALS, "avg_volume": fast["avg_volume"], "market_cap": fast["market_cap"]}
+            try:
+                stmt = t.income_stmt
+                if stmt is not None and not stmt.empty:
+                    if "Net Income" in stmt.index:
+                        net = stmt.loc["Net Income"].dropna()
+                        if len(net) >= 2 and net.iloc[1] != 0:
+                            result["eps_growth_yoy"] = round(
+                                float((net.iloc[0] - net.iloc[1]) / abs(net.iloc[1])), 4
+                            )
+                    if "Total Revenue" in stmt.index:
+                        rev = stmt.loc["Total Revenue"].dropna()
+                        if len(rev) >= 2 and rev.iloc[1] != 0:
+                            result["revenue_growth_yoy"] = round(
+                                float((rev.iloc[0] - rev.iloc[1]) / abs(rev.iloc[1])), 4
+                            )
+            except Exception:
+                pass
+
+            # Derive PEG if possible
+            fpe = result.get("forward_pe")
+            eps = result.get("eps_growth_yoy")
+            if fpe and eps and eps > 0 and result.get("peg_ratio") is None:
+                result["peg_ratio"] = round(fpe / (eps * 100), 2)
+
+    print(f"[FUND] {ticker}: eps={result.get('eps_growth_yoy')} rev={result.get('revenue_growth_yoy')} "
+          f"pe={result.get('forward_pe')} mktcap={result.get('market_cap')} sector={result.get('sector')}")
+
+    _cache_set(ticker, result)
     return result
 
 
